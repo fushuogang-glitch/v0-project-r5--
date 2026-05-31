@@ -402,11 +402,17 @@ export type TaxAlert = {
   level: 'safe' | 'warning' | 'danger'
 }
 
-export async function getTaxAlerts(): Promise<TaxAlert[]> {
+export async function getTaxAlerts(entityIdFilter?: number): Promise<TaxAlert[]> {
   const scope = await getScope()
 
   const entConds: SQL[] = [eq(entities.userId, scope.ownerId), eq(entities.status, 'active')]
-  if (scope.entityId != null) entConds.push(eq(entities.id, scope.entityId))
+  // 指定主体时(如单店详情页),按 URL 主体查询并校验权限,忽略全局视图过滤
+  if (entityIdFilter != null) {
+    await assertEntityAccess(scope, entityIdFilter)
+    entConds.push(eq(entities.id, entityIdFilter))
+  } else if (scope.entityId != null) {
+    entConds.push(eq(entities.id, scope.entityId))
+  }
   const list = await db
     .select()
     .from(entities)

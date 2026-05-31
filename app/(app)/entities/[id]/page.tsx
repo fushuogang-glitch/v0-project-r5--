@@ -65,7 +65,7 @@ export default async function EntityDetailPage({
   const [accounts, txs, alerts, storeUsers] = await Promise.all([
     getEntityAccounts(entityId),
     getEntityTransactions(entityId, 30),
-    getTaxAlerts(),
+    getTaxAlerts(entityId),
     scope.role === 'group' ? getStoreAccounts(entityId) : Promise.resolve([]),
   ])
 
