@@ -77,6 +77,7 @@ export const entities = pgTable('entities', {
   name: text('name').notNull(), // 主体名称
   code: text('code').notNull(), // 主体编号
   entityType: text('entityType').notNull().default('company'), // company 公司 | sole 个体户 | store 门店
+  departmentId: integer('departmentId'), // 归属的集团中控部门(如运营中心)
   creditCode: text('creditCode'), // 统一社会信用代码
   legalPerson: text('legalPerson'), // 法人
   taxpayerType: text('taxpayerType').notNull().default('small'), // small 小规模 | general 一般纳税人
@@ -138,6 +139,7 @@ export const shareholders = pgTable('shareholders', {
   userId: text('userId').notNull(), // 数据归属(集团 owner)
   level: text('level').notNull().default('entity'), // group 集团层 | entity 门店层
   entityId: integer('entityId'), // 关联门店/主体(集团层为空)
+  employeeId: integer('employeeId'), // 绑定的架构员工(可选)
   name: text('name').notNull(), // 持股人姓名
   shareType: text('shareType').notNull(), // bank 银股 | position 身股 | growth 发展股
   ratio: numeric('ratio', { precision: 5, scale: 2 }).notNull().default('0'), // 分红权比例(%)
@@ -154,6 +156,7 @@ export const employees = pgTable('employees', {
   userId: text('userId').notNull(), // 数据归属(集团 owner)
   level: text('level').notNull().default('entity'), // group 集团层 | entity 门店层
   entityId: integer('entityId'), // 所属门店(集团层为空)
+  departmentId: integer('departmentId'), // 集团层员工所属中控部门
   name: text('name').notNull(), // 姓名
   position: text('position'), // 岗位(店长/美容顾问/技师/集团高管)
   jobLevel: text('jobLevel').notNull().default('staff'), // exec 高管 | manager 店长 | supervisor 主管 | staff 员工
@@ -164,8 +167,28 @@ export const employees = pgTable('employees', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
+// 集团中控部门字典:运营中心、财务中心、人力中心等,企业可自行增减
+export const departments = pgTable('departments', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(),
+  name: text('name').notNull(),
+  sortOrder: integer('sortOrder').notNull().default(0),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+// 门店岗位字典:店长、顾问、美容师、前台、阿姨、医生、护士等,企业可自行增减
+export const positions = pgTable('positions', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(),
+  name: text('name').notNull(),
+  sortOrder: integer('sortOrder').notNull().default(0),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
 export type Account = typeof accounts.$inferSelect
 export type Shareholder = typeof shareholders.$inferSelect
 export type Employee = typeof employees.$inferSelect
+export type Department = typeof departments.$inferSelect
+export type Position = typeof positions.$inferSelect

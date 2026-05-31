@@ -84,6 +84,7 @@ export type AddShareholderResult = { ok: true } | { ok: false; error: string }
 export async function addShareholder(input: {
   level?: 'group' | 'entity'
   entityId?: number
+  employeeId?: number | null
   name: string
   shareType: 'bank' | 'position' | 'growth'
   ratio: number
@@ -110,6 +111,7 @@ export async function addShareholder(input: {
     userId: scope.ownerId,
     level,
     entityId,
+    employeeId: input.employeeId ?? null,
     name: input.name.trim(),
     shareType: input.shareType,
     ratio: String(input.ratio),

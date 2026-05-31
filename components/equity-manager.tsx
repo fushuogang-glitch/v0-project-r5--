@@ -66,17 +66,21 @@ const TYPE_BADGE: Record<ShareType, string> = {
   growth: 'border-chart-4/30 bg-chart-4/10 text-chart-4',
 }
 
+export type EmployeeOption = { id: number; name: string; position: string | null }
+
 export function EquityManager({
   entities,
   selectedId,
   data,
   forecast,
+  employees = [],
   canEdit,
 }: {
   entities: { id: number; name: string }[]
   selectedId: number
   data: EquityData
   forecast: DividendForecast | null
+  employees?: EmployeeOption[]
   canEdit: boolean
 }) {
   const router = useRouter()
@@ -104,7 +108,13 @@ export function EquityManager({
             </SelectContent>
           </Select>
         </div>
-        {canEdit && <AddShareholderDialog entityId={selectedId} onDone={() => router.refresh()} />}
+        {canEdit && (
+          <AddShareholderDialog
+            entityId={selectedId}
+            employees={employees}
+            onDone={() => router.refresh()}
+          />
+        )}
       </div>
 
       {/* 分红权释放结构 */}
@@ -402,21 +412,38 @@ function DividendForecastCard({ forecast }: { forecast: DividendForecast }) {
 function AddShareholderDialog({
   entityId,
   level = 'entity',
+  employees = [],
   onDone,
 }: {
   entityId?: number
   level?: 'group' | 'entity'
+  employees?: EmployeeOption[]
   onDone: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
+    employeeId: '' as string, // '' = 外部/手动录入
     name: '',
     shareType: 'bank' as ShareType,
     ratio: '',
     position: '',
   })
+
+  function pickEmployee(v: string) {
+    if (v === 'manual') {
+      setForm((f) => ({ ...f, employeeId: '', name: '', position: '' }))
+      return
+    }
+    const emp = employees.find((e) => String(e.id) === v)
+    setForm((f) => ({
+      ...f,
+      employeeId: v,
+      name: emp?.name ?? f.name,
+      position: emp?.position ?? f.position,
+    }))
+  }
 
   function submit() {
     setError(null)
@@ -424,13 +451,14 @@ function AddShareholderDialog({
       const res = await addShareholder({
         level,
         entityId,
+        employeeId: form.employeeId ? Number(form.employeeId) : null,
         name: form.name,
         shareType: form.shareType,
         ratio: Number(form.ratio),
         position: form.position,
       })
       if (res.ok) {
-        setForm({ name: '', shareType: 'bank', ratio: '', position: '' })
+        setForm({ employeeId: '', name: '', shareType: 'bank', ratio: '', position: '' })
         setOpen(false)
         onDone()
       } else {
@@ -453,12 +481,31 @@ function AddShareholderDialog({
           <DialogDescription>登记银股/身股/发展股持股人及其分红权比例</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
+          {employees.length > 0 && (
+            <div className="grid gap-2">
+              <Label>绑定架构员工</Label>
+              <Select value={form.employeeId || 'manual'} onValueChange={pickEmployee}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择员工或手动录入" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">手动录入(外部股东)</SelectItem>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={String(e.id)}>
+                      {e.name}
+                      {e.position ? ` · ${e.position}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="sh-name">姓名</Label>
             <Input
               id="sh-name"
               value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value, employeeId: '' }))}
               placeholder="持股人姓名"
             />
           </div>
@@ -520,10 +567,12 @@ function AddShareholderDialog({
 export function GroupEquityManager({
   data,
   forecast,
+  employees = [],
   canEdit,
 }: {
   data: { rows: EquityData['rows']; summary: EquityData['summary'] }
   forecast: GroupDividendForecast | null
+  employees?: EmployeeOption[]
   canEdit: boolean
 }) {
   const router = useRouter()
@@ -535,7 +584,13 @@ export function GroupEquityManager({
         <p className="text-sm text-muted-foreground">
           集团层股东跨门店持股,分红基数为旗下全部门店的合并税后净利润
         </p>
-        {canEdit && <AddShareholderDialog level="group" onDone={() => router.refresh()} />}
+        {canEdit && (
+          <AddShareholderDialog
+            level="group"
+            employees={employees}
+            onDone={() => router.refresh()}
+          />
+        )}
       </div>
 
       <ReleaseStructure summary={summary} />

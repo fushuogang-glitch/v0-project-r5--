@@ -60,12 +60,22 @@ export async function getViewableEntities(scope: Scope) {
   if (scope.role === 'store') {
     if (scope.entityId == null) return []
     return db
-      .select({ id: entities.id, name: entities.name, code: entities.code })
+      .select({
+        id: entities.id,
+        name: entities.name,
+        code: entities.code,
+        departmentId: entities.departmentId,
+      })
       .from(entities)
       .where(and(eq(entities.userId, scope.ownerId), eq(entities.id, scope.entityId)))
   }
   return db
-    .select({ id: entities.id, name: entities.name, code: entities.code })
+    .select({
+      id: entities.id,
+      name: entities.name,
+      code: entities.code,
+      departmentId: entities.departmentId,
+    })
     .from(entities)
     .where(eq(entities.userId, scope.ownerId))
     .orderBy(entities.code)

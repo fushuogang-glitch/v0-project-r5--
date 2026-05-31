@@ -5,6 +5,7 @@ import {
   getGroupEquityData,
   getGroupDividendForecast,
 } from '@/app/actions/equity'
+import { listEmployees } from '@/app/actions/hr'
 import { PageHeader } from '@/components/page-header'
 import { EquityManager, GroupEquityManager } from '@/components/equity-manager'
 import { Card, CardContent } from '@/components/ui/card'
@@ -59,7 +60,11 @@ export default async function EquityPage({
 }
 
 async function renderGroup() {
-  const [data, forecast] = await Promise.all([getGroupEquityData(), getGroupDividendForecast()])
+  const [data, forecast, allEmps] = await Promise.all([
+    getGroupEquityData(),
+    getGroupDividendForecast(),
+    listEmployees(),
+  ])
   if (!data) {
     return (
       <Card>
@@ -69,7 +74,10 @@ async function renderGroup() {
       </Card>
     )
   }
-  return <GroupEquityManager data={data} forecast={forecast} canEdit />
+  const employees = allEmps
+    .filter((e) => e.level === 'group')
+    .map((e) => ({ id: e.id, name: e.name, position: e.position }))
+  return <GroupEquityManager data={data} forecast={forecast} employees={employees} canEdit />
 }
 
 async function renderEntity(
@@ -82,9 +90,10 @@ async function renderEntity(
     scope.role === 'store' ? scope.entityId ?? entities[0].id : requestedId ?? entities[0].id
   const selectedId = entities.some((e) => e.id === baseId) ? baseId : entities[0].id
 
-  const [data, forecast] = await Promise.all([
+  const [data, forecast, allEmps] = await Promise.all([
     getEquityData(selectedId),
     getDividendForecast(selectedId),
+    listEmployees(),
   ])
 
   if (!data) {
@@ -97,12 +106,17 @@ async function renderEntity(
     )
   }
 
+  const employees = allEmps
+    .filter((e) => e.level === 'entity' && e.entityId === selectedId)
+    .map((e) => ({ id: e.id, name: e.name, position: e.position }))
+
   return (
     <EquityManager
       entities={entities}
       selectedId={selectedId}
       data={data}
       forecast={forecast}
+      employees={employees}
       canEdit={scope.role === 'group'}
     />
   )
