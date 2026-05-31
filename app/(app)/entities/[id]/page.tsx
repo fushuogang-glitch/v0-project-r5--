@@ -20,12 +20,14 @@ import {
   getMembershipData,
   getEntityVouchers,
   getFinancialStatements,
+  getQuarterlyQuotas,
 } from '@/app/actions/finance'
 import { getStoreAccounts } from '@/app/actions/org'
 import { getScope } from '@/lib/scope'
 import { PageHeader } from '@/components/page-header'
 import { KpiCard } from '@/components/kpi-card'
 import { TaxAlertBar } from '@/components/tax-alert-bar'
+import { QuarterlyQuotaCard } from '@/components/quarterly-quota-card'
 import { StoreAccountManager } from '@/components/store-account-manager'
 import { TransactionForm } from '@/components/transaction-form'
 import { TaxPolicyCard } from '@/components/tax-policy-card'
@@ -75,7 +77,7 @@ export default async function EntityDetailPage({
   }
 
   const scope = await getScope()
-  const [accounts, txs, alerts, storeUsers, taxPolicy, membership, vouchers, statements] =
+  const [accounts, txs, alerts, storeUsers, taxPolicy, membership, vouchers, statements, quotas] =
     await Promise.all([
       getEntityAccounts(entityId),
       getEntityTransactions(entityId, 100),
@@ -85,7 +87,9 @@ export default async function EntityDetailPage({
       getMembershipData(entityId),
       getEntityVouchers(entityId),
       getFinancialStatements(entityId),
+      getQuarterlyQuotas(entityId),
     ])
+  const quota = quotas[0]
 
   const { entity, summary } = detail
   const alert = alerts.find((a) => a.entityId === entityId)
@@ -362,7 +366,8 @@ export default async function EntityDetailPage({
         </TabsContent>
 
         {/* 税务额度 */}
-        <TabsContent value="tax" className="mt-4">
+        <TabsContent value="tax" className="mt-4 space-y-4">
+          {quota && <QuarterlyQuotaCard quota={quota} />}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">税务额度状态</CardTitle>
