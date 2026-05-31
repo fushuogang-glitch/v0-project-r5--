@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   BarChart3,
-  Store,
+  Building2,
+  ShieldAlert,
   LogOut,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
@@ -32,9 +33,10 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 const navItems = [
-  { title: '经营仪表盘', href: '/', icon: LayoutDashboard },
+  { title: '集团驾驶舱', href: '/', icon: LayoutDashboard },
+  { title: '主体管理', href: '/entities', icon: Building2 },
   { title: '财务报表', href: '/reports', icon: BarChart3 },
-  { title: '门店管理', href: '/stores', icon: Store },
+  { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
 ]
 
 export function AppSidebar({
@@ -60,16 +62,16 @@ export function AppSidebar({
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold text-sidebar-foreground">
-              美业财务 ERP
+              诺塔智 · 财务大脑
             </span>
-            <span className="text-xs text-muted-foreground">连锁门店财务管理</span>
+            <span className="text-xs text-muted-foreground">美业多主体财税管理</span>
           </div>
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>经营管理</SidebarGroupLabel>
+          <SidebarGroupLabel>财税管理</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {

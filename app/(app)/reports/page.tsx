@@ -2,7 +2,7 @@ import {
   getMonthlyTrend,
   getRevenueByCategory,
   getExpenseByCategory,
-  getDashboardSummary,
+  getGroupSummary,
 } from '@/app/actions/finance'
 import { PageHeader } from '@/components/page-header'
 import { RevenueExpenseBar } from '@/components/charts/revenue-expense-bar'
@@ -35,7 +35,7 @@ export default async function ReportsPage() {
     getMonthlyTrend(),
     getRevenueByCategory(),
     getExpenseByCategory(),
-    getDashboardSummary(),
+    getGroupSummary(),
   ])
 
   const reversed = [...trend].reverse()
