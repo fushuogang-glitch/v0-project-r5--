@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { db, pool } from '@/lib/db'
 import { user as userTable, entities, accounts } from '@/lib/db/schema'
 import { getScope, VIEW_COOKIE } from '@/lib/scope'
+import { generateAgentKey } from '@/lib/agent-auth'
 import { and, eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -224,7 +225,7 @@ export async function updateEntityInfo(input: {
     .from(entities)
     .where(and(eq(entities.id, input.entityId), eq(entities.userId, scope.ownerId)))
     .limit(1)
-  if (!entity) return { ok: false, error: '主体不存在或无权操作' }
+  if (!entity) return { ok: false, error: '��体不存在或无权操作' }
 
   const norm = (v?: string) => (v && v.trim() ? v.trim() : null)
   await db
@@ -260,4 +261,37 @@ export async function getStoreAccounts(entityId: number) {
     })
     .from(userTable)
     .where(and(eq(userTable.ownerId, scope.ownerId), eq(userTable.entityId, entityId)))
+}
+
+// ---------------------------------------------------------------------------
+// 财务 Agent API 密钥(集团级):供公司侧财务 Agent 抓取门店数据 / 回填流水
+// ---------------------------------------------------------------------------
+
+/** 获取当前集团的 Agent 密钥(若未生成返回 null) */
+export async function getAgentApiKey(): Promise<string | null> {
+  const scope = await getScope()
+  if (scope.role !== 'group') return null
+  const [u] = await db
+    .select({ key: userTable.agentApiKey })
+    .from(userTable)
+    .where(eq(userTable.id, scope.ownerId))
+    .limit(1)
+  return u?.key ?? null
+}
+
+/** 生成 / 重置 Agent 密钥,返回新密钥 */
+export async function rotateAgentApiKey(): Promise<
+  { ok: true; key: string } | { ok: false; error: string }
+> {
+  const scope = await getScope()
+  if (scope.role !== 'group') {
+    return { ok: false, error: '只有集团管理员可以管理 Agent 密钥' }
+  }
+  const key = generateAgentKey()
+  await db
+    .update(userTable)
+    .set({ agentApiKey: key })
+    .where(eq(userTable.id, scope.ownerId))
+  revalidatePath('/settings')
+  return { ok: true, key }
 }

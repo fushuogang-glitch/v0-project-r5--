@@ -8,7 +8,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatPercent } from '@/lib/format'
-import type { IncomeStatement, BalanceSheet } from '@/app/actions/finance'
+import type { IncomeStatement, BalanceSheet } from '@/lib/accounting'
 
 export function FinancialStatements({
   income,

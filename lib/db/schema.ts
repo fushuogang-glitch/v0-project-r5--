@@ -22,6 +22,7 @@ export const user = pgTable('user', {
   role: text('role').notNull().default('group'), // group 集团管理员 | store 门店端
   ownerId: text('ownerId'), // 所属集团的 userId(集团管理员=自身);用于数据归属
   entityId: integer('entityId'), // 门店端账号锁定的主体 id
+  agentApiKey: text('agentApiKey'), // 财务 Agent API 密钥(集团级,用于公司侧 Agent 抓取门店数据)
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })

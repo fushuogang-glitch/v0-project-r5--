@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   Wallet,
   Store,
+  Settings,
   LogOut,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
@@ -42,6 +43,7 @@ const groupNav: NavItem[] = [
   { title: '收款账户', href: '/accounts', icon: Wallet },
   { title: '财务报表', href: '/reports', icon: BarChart3 },
   { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
+  { title: '设置', href: '/settings', icon: Settings },
 ]
 
 function storeNav(entityId: number | null): NavItem[] {
