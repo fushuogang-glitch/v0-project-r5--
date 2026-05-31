@@ -509,6 +509,104 @@ export async function getTaxAlerts(entityIdFilter?: number): Promise<TaxAlert[]>
 }
 
 // ---------------------------------------------------------------------------
+// 单店季度额度:按建议每季度使用额度(年度安全线 / 4)展示当年四个季度使用进度
+// ---------------------------------------------------------------------------
+export type QuarterUsage = {
+  quarter: 1 | 2 | 3 | 4
+  revenue: number
+  usedPercent: number
+  level: 'safe' | 'warning' | 'danger'
+  isCurrent: boolean
+}
+
+export type QuarterlyQuota = {
+  entityId: number
+  entityName: string
+  taxpayerType: string
+  year: number
+  annualThreshold: number
+  annualThresholdLabel: string
+  suggestedPerQuarter: number
+  yearRevenue: number
+  quarters: QuarterUsage[]
+}
+
+export async function getQuarterlyQuotas(entityIdFilter?: number): Promise<QuarterlyQuota[]> {
+  const scope = await getScope()
+
+  const entConds: SQL[] = [eq(entities.userId, scope.ownerId), eq(entities.status, 'active')]
+  if (entityIdFilter != null) {
+    await assertEntityAccess(scope, entityIdFilter)
+    entConds.push(eq(entities.id, entityIdFilter))
+  } else if (scope.entityId != null) {
+    entConds.push(eq(entities.id, scope.entityId))
+  }
+  const list = await db.select().from(entities).where(and(...entConds))
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const currentQuarter = (Math.floor(now.getMonth() / 3) + 1) as 1 | 2 | 3 | 4
+
+  const result: QuarterlyQuota[] = []
+
+  for (const e of list) {
+    // 年度安全线:小规模盯一般纳税人认定线(500万),一般纳税人盯小微优惠线(300万)
+    const annualThreshold =
+      e.taxpayerType === 'small'
+        ? TAX_THRESHOLDS.generalTaxpayerYearly
+        : TAX_THRESHOLDS.smallProfitYearly
+    const annualThresholdLabel =
+      e.taxpayerType === 'small' ? '一般纳税人认定线(年500万)' : '小微企业优惠线(年300万)'
+    const suggestedPerQuarter = Math.round(annualThreshold / 4)
+
+    const quarters: QuarterUsage[] = []
+    let yearRevenue = 0
+
+    for (let q = 1 as 1 | 2 | 3 | 4; q <= 4; q = (q + 1) as 1 | 2 | 3 | 4) {
+      const startMonth = (q - 1) * 3
+      const qStart = `${year}-${String(startMonth + 1).padStart(2, '0')}-01`
+      const qEndExclusive =
+        q === 4 ? `${year + 1}-01-01` : `${year}-${String(startMonth + 4).padStart(2, '0')}-01`
+
+      const [row] = await db
+        .select({ total: sql<string>`coalesce(sum(${transactions.amount}), 0)` })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, scope.ownerId),
+            eq(transactions.entityId, e.id),
+            eq(transactions.bizType, 'income'),
+            sql`${transactions.bizDate} >= ${qStart}`,
+            sql`${transactions.bizDate} < ${qEndExclusive}`,
+          ),
+        )
+
+      const revenue = Math.round(Number(row?.total ?? 0))
+      yearRevenue += revenue
+      const usedPercent = suggestedPerQuarter > 0 ? (revenue / suggestedPerQuarter) * 100 : 0
+      const level: QuarterUsage['level'] =
+        usedPercent >= 100 ? 'danger' : usedPercent >= 80 ? 'warning' : 'safe'
+
+      quarters.push({ quarter: q, revenue, usedPercent, level, isCurrent: q === currentQuarter })
+    }
+
+    result.push({
+      entityId: e.id,
+      entityName: e.name,
+      taxpayerType: e.taxpayerType,
+      year,
+      annualThreshold,
+      annualThresholdLabel,
+      suggestedPerQuarter,
+      yearRevenue,
+      quarters,
+    })
+  }
+
+  return result.sort((a, b) => b.yearRevenue - a.yearRevenue)
+}
+
+// ---------------------------------------------------------------------------
 // 分类构成
 // ---------------------------------------------------------------------------
 export type CategorySlice = { category: string; amount: number }

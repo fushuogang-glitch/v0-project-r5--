@@ -6,7 +6,16 @@ import { getScope } from '@/lib/scope'
 import { and, eq, asc } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-export type JobLevel = 'exec' | 'manager' | 'supervisor' | 'staff'
+export type JobLevel =
+  | 'L1' | 'L2' | 'L3' | 'L4' | 'L5'
+  | 'L6' | 'L7' | 'L8' | 'L9' | 'L10'
+  | 'L11' | 'L12' | 'L13' | 'L14' | 'L15'
+
+export const JOB_LEVELS: JobLevel[] = [
+  'L1', 'L2', 'L3', 'L4', 'L5',
+  'L6', 'L7', 'L8', 'L9', 'L10',
+  'L11', 'L12', 'L13', 'L14', 'L15',
+]
 
 export type EmployeeRow = {
   id: number
@@ -56,7 +65,7 @@ function toRow(e: typeof employees.$inferSelect): EmployeeRow {
     departmentId: e.departmentId,
     name: e.name,
     position: e.position,
-    jobLevel: (e.jobLevel as JobLevel) ?? 'staff',
+    jobLevel: (e.jobLevel as JobLevel) ?? 'L1',
     managerId: e.managerId,
     phone: e.phone,
     hireDate: e.hireDate,

@@ -40,24 +40,24 @@ import {
   setEntityDepartment,
   type OrgChart as OrgChartData,
   type OrgEntityNode,
+  JOB_LEVELS,
   type EmployeeRow,
   type JobLevel,
   type DeptItem,
   type PositionItem,
 } from '@/app/actions/hr'
 
-const JOB_LEVEL_LABEL: Record<JobLevel, string> = {
-  exec: '高管',
-  manager: '店长',
-  supervisor: '主管',
-  staff: '员工',
+// 职级 L1-L15:标签即编码本身;徽章按层级分色(L13+ 高层 / L9-12 中层 / L5-8 主管 / L1-4 员工)
+function jobLevelLabel(level: JobLevel) {
+  return level
 }
 
-const JOB_LEVEL_BADGE: Record<JobLevel, string> = {
-  exec: 'border-primary/30 bg-primary/10 text-primary',
-  manager: 'border-chart-2/30 bg-chart-2/10 text-chart-2',
-  supervisor: 'border-chart-4/30 bg-chart-4/10 text-chart-4',
-  staff: 'border-border bg-muted text-muted-foreground',
+function jobLevelBadge(level: JobLevel) {
+  const n = Number(String(level).replace('L', '')) || 1
+  if (n >= 13) return 'border-primary/30 bg-primary/10 text-primary'
+  if (n >= 9) return 'border-chart-2/30 bg-chart-2/10 text-chart-2'
+  if (n >= 5) return 'border-chart-4/30 bg-chart-4/10 text-chart-4'
+  return 'border-border bg-muted text-muted-foreground'
 }
 
 type EntityOption = { id: number; name: string; departmentId: number | null }
@@ -330,7 +330,7 @@ function PersonPill({
   return (
     <span className="inline-flex items-center gap-1 rounded-full border bg-card py-0.5 pl-2.5 pr-1 text-xs">
       <span className="font-medium text-foreground">{emp.name}</span>
-      <span className="text-muted-foreground">{emp.position ?? JOB_LEVEL_LABEL[emp.jobLevel]}</span>
+          <span className="text-muted-foreground">{emp.position ?? jobLevelLabel(emp.jobLevel)}</span>
       {canEdit && (
         <button
           type="button"
@@ -365,8 +365,13 @@ function EmployeeRowItem({
       <div className="flex min-w-0 flex-col">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">{emp.name}</span>
-          <Badge variant="outline" className={JOB_LEVEL_BADGE[emp.jobLevel]}>
-            {emp.position ?? JOB_LEVEL_LABEL[emp.jobLevel]}
+          {emp.position && (
+            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
+              {emp.position}
+            </Badge>
+          )}
+          <Badge variant="outline" className={jobLevelBadge(emp.jobLevel)}>
+            {jobLevelLabel(emp.jobLevel)}
           </Badge>
         </div>
         {(emp.phone || emp.hireDate) && (
@@ -664,7 +669,7 @@ function AddEmployeeDialog({
     departmentId: departments[0]?.id ? String(departments[0].id) : '',
     name: '',
     position: positions[0]?.name ?? '',
-    jobLevel: 'staff' as JobLevel,
+    jobLevel: 'L1' as JobLevel,
     phone: '',
     hireDate: '',
   })
@@ -680,7 +685,7 @@ function AddEmployeeDialog({
       departmentId: departments[0]?.id ? String(departments[0].id) : '',
       name: '',
       position: positions[0]?.name ?? '',
-      jobLevel: 'staff',
+      jobLevel: 'L1',
       phone: '',
       hireDate: '',
     })
@@ -827,10 +832,11 @@ function AddEmployeeDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {form.level === 'group' && <SelectItem value="exec">高管</SelectItem>}
-                  <SelectItem value="manager">店长</SelectItem>
-                  <SelectItem value="supervisor">主管</SelectItem>
-                  <SelectItem value="staff">员工</SelectItem>
+                  {JOB_LEVELS.map((lv) => (
+                    <SelectItem key={lv} value={lv}>
+                      {lv}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -1,7 +1,8 @@
-import { getTaxAlerts } from '@/app/actions/finance'
+import { getTaxAlerts, getQuarterlyQuotas } from '@/app/actions/finance'
 import { TAX_THRESHOLDS } from '@/lib/tax'
 import { PageHeader } from '@/components/page-header'
 import { TaxAlertBar } from '@/components/tax-alert-bar'
+import { QuarterlyQuotaCard } from '@/components/quarterly-quota-card'
 import {
   Card,
   CardContent,
@@ -13,7 +14,7 @@ import { ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
 import { formatCompactCurrency } from '@/lib/format'
 
 export default async function TaxAlertsPage() {
-  const alerts = await getTaxAlerts()
+  const [alerts, quotas] = await Promise.all([getTaxAlerts(), getQuarterlyQuotas()])
 
   const danger = alerts.filter((a) => a.level === 'danger')
   const warning = alerts.filter((a) => a.level === 'warning')
@@ -75,6 +76,28 @@ export default async function TaxAlertsPage() {
           ))}
         </CardContent>
       </Card>
+
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">单店季度额度使用进度</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            按「建议每季度使用额度(年度安全线 ÷ 4)」拆解,清晰掌握每个季度的开票节奏
+          </p>
+        </div>
+        {quotas.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              暂无可展示的主体数据
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {quotas.map((q) => (
+              <QuarterlyQuotaCard key={q.entityId} quota={q} />
+            ))}
+          </div>
+        )}
+      </div>
 
       <Card>
         <CardHeader>
