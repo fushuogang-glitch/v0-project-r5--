@@ -98,9 +98,14 @@ export const transactions = pgTable('transactions', {
   channel: text('channel').notNull().default('store'), // 收付渠道
   amount: numeric('amount', { precision: 14, scale: 2 }).notNull(), // 含税金额
   taxRate: numeric('taxRate', { precision: 5, scale: 4 }).notNull().default('0'), // 税率
-  taxAmount: numeric('taxAmount', { precision: 14, scale: 2 }).notNull().default('0'), // 税额
+  taxAmount: numeric('taxAmount', { precision: 14, scale: 2 }).notNull().default('0'), // 增值税额
+  surtaxAmount: numeric('surtaxAmount', { precision: 14, scale: 2 }).notNull().default('0'), // 附加税费
   netAmount: numeric('netAmount', { precision: 14, scale: 2 }).notNull().default('0'), // 不含税金额
   invoiced: boolean('invoiced').notNull().default(false), // 是否已开票
+  invoiceMedium: text('invoiceMedium').notNull().default('none'), // none | electronic 电子 | paper 纸质
+  invoiceKind: text('invoiceKind').notNull().default('none'), // none | special 专票 | general 普票 | receipt 收据
+  invoiceNo: text('invoiceNo'), // 发票号码
+  invoiceCode: text('invoiceCode'), // 发票代码
   summary: text('summary'), // 摘要
   source: text('source').notNull().default('manual'), // manual 手工 | pos | bank | invoice | agent
   status: text('status').notNull().default('posted'), // posted 已记账 | draft 草稿

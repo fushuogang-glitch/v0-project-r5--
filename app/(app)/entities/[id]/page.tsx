@@ -16,6 +16,7 @@ import {
   getEntityAccounts,
   getEntityTransactions,
   getTaxAlerts,
+  getEntityTaxPolicy,
 } from '@/app/actions/finance'
 import { getStoreAccounts } from '@/app/actions/org'
 import { getScope } from '@/lib/scope'
@@ -23,6 +24,9 @@ import { PageHeader } from '@/components/page-header'
 import { KpiCard } from '@/components/kpi-card'
 import { TaxAlertBar } from '@/components/tax-alert-bar'
 import { StoreAccountManager } from '@/components/store-account-manager'
+import { TransactionForm } from '@/components/transaction-form'
+import { TaxPolicyCard } from '@/components/tax-policy-card'
+import { invoiceMediumLabel, invoiceKindLabel } from '@/lib/invoice-meta'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Card,
@@ -62,11 +66,12 @@ export default async function EntityDetailPage({
   }
 
   const scope = await getScope()
-  const [accounts, txs, alerts, storeUsers] = await Promise.all([
+  const [accounts, txs, alerts, storeUsers, taxPolicy] = await Promise.all([
     getEntityAccounts(entityId),
-    getEntityTransactions(entityId, 30),
+    getEntityTransactions(entityId, 100),
     getTaxAlerts(entityId),
     scope.role === 'group' ? getStoreAccounts(entityId) : Promise.resolve([]),
+    getEntityTaxPolicy(entityId),
   ])
 
   const { entity, summary } = detail
@@ -121,7 +126,12 @@ export default async function EntityDetailPage({
         </TabsList>
 
         {/* 经营概况 */}
-        <TabsContent value="overview" className="mt-4">
+        <TabsContent value="overview" className="mt-4 space-y-4">
+          <TaxPolicyCard
+            entityType={taxPolicy.entityType}
+            taxpayerType={taxPolicy.taxpayerType}
+            profile={taxPolicy.profile}
+          />
           <Card>
             <CardHeader>
               <CardTitle className="text-base">工商与税务信息</CardTitle>
@@ -209,8 +219,22 @@ export default async function EntityDetailPage({
         <TabsContent value="transactions" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">收支流水明细</CardTitle>
-              <CardDescription>最近 30 条业务流水</CardDescription>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">收支流水明细</CardTitle>
+                  <CardDescription>
+                    共 {txs.length} 条 · 含价税分离与发票信息
+                  </CardDescription>
+                </div>
+                <TransactionForm
+                  entityId={entity.id}
+                  profile={{
+                    vatRate: taxPolicy.profile.vatRate,
+                    surtaxRate: taxPolicy.profile.surtaxRate,
+                    vatLabel: taxPolicy.profile.vatLabel,
+                  }}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -221,11 +245,20 @@ export default async function EntityDetailPage({
                       <TableHead>类型</TableHead>
                       <TableHead>分类</TableHead>
                       <TableHead>渠道</TableHead>
-                      <TableHead>开票</TableHead>
-                      <TableHead className="text-right">金额</TableHead>
+                      <TableHead>发票</TableHead>
+                      <TableHead className="text-right">不含税</TableHead>
+                      <TableHead className="text-right">税额</TableHead>
+                      <TableHead className="text-right">含税金额</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {txs.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                          暂无流水,点击右上角「录入流水」开始记账
+                        </TableCell>
+                      </TableRow>
+                    )}
                     {txs.map((t) => {
                       const income = t.bizType === 'income'
                       return (
@@ -249,7 +282,25 @@ export default async function EntityDetailPage({
                           <TableCell className="text-foreground">{t.category}</TableCell>
                           <TableCell className="text-muted-foreground">{t.channel}</TableCell>
                           <TableCell className="text-muted-foreground">
-                            {t.invoiced ? '已开票' : '未开票'}
+                            {t.invoiceMedium === 'none' ? (
+                              <span className="text-xs">未开票</span>
+                            ) : (
+                              <span className="flex flex-col">
+                                <span className="text-xs text-foreground">
+                                  {invoiceKindLabel(t.invoiceKind)}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {invoiceMediumLabel(t.invoiceMedium)}
+                                  {t.invoiceNo ? ` · ${t.invoiceNo}` : ''}
+                                </span>
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {formatCurrency(t.netAmount)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {formatCurrency(t.taxAmount)}
                           </TableCell>
                           <TableCell
                             className={cn(

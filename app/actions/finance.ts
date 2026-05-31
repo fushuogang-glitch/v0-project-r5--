@@ -3,8 +3,10 @@
 import { db } from '@/lib/db'
 import { entities, transactions, accounts } from '@/lib/db/schema'
 import { TAX_THRESHOLDS } from '@/lib/tax'
+import { getTaxProfile, calcTax } from '@/lib/tax-policy'
 import { getScope, type Scope } from '@/lib/scope'
 import { and, eq, sql, desc, type SQL } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 
 // ---------------------------------------------------------------------------
 // 范围助手:所有业务查询都按 ownerId 隔离;若 scope 锁定了某主体(门店端 / 集团
@@ -728,7 +730,12 @@ export type TxRow = {
   category: string
   channel: string
   amount: number
+  netAmount: number
+  taxAmount: number
   invoiced: boolean
+  invoiceMedium: string
+  invoiceKind: string
+  invoiceNo: string | null
   summary: string | null
 }
 
@@ -747,7 +754,12 @@ export async function getEntityTransactions(
       category: transactions.category,
       channel: transactions.channel,
       amount: transactions.amount,
+      netAmount: transactions.netAmount,
+      taxAmount: transactions.taxAmount,
       invoiced: transactions.invoiced,
+      invoiceMedium: transactions.invoiceMedium,
+      invoiceKind: transactions.invoiceKind,
+      invoiceNo: transactions.invoiceNo,
       summary: transactions.summary,
     })
     .from(transactions)
@@ -762,7 +774,97 @@ export async function getEntityTransactions(
     category: r.category,
     channel: r.channel,
     amount: Math.round(Number(r.amount)),
+    netAmount: Math.round(Number(r.netAmount)),
+    taxAmount: Math.round(Number(r.taxAmount)),
     invoiced: r.invoiced,
+    invoiceMedium: r.invoiceMedium,
+    invoiceKind: r.invoiceKind,
+    invoiceNo: r.invoiceNo,
     summary: r.summary,
   }))
+}
+
+// ---------------------------------------------------------------------------
+// 税政:返回某主体当前适用的税收政策(账目标准随主体自动变化)
+// ---------------------------------------------------------------------------
+export async function getEntityTaxPolicy(entityId: number) {
+  const scope = await getScope()
+  const e = await assertEntityAccess(scope, entityId)
+  return {
+    entityType: e.entityType,
+    taxpayerType: e.taxpayerType,
+    profile: getTaxProfile(e.entityType, e.taxpayerType),
+  }
+}
+
+export type CreateTxInput = {
+  entityId: number
+  bizType: 'income' | 'expense'
+  bizDate: string
+  category: string
+  channel: string
+  amount: number
+  // 发票
+  invoiceMedium?: string
+  invoiceKind?: string
+  invoiceNo?: string
+  invoiceCode?: string
+  summary?: string
+}
+
+export type CreateTxResult =
+  | { ok: true; id: number; taxAmount: number; netAmount: number }
+  | { ok: false; error: string }
+
+/**
+ * 录入一笔收支流水。账目标准自动变化:依据该主体的税政(税率/计税口径)
+ * 自动完成价税分离、计算增值税额与附加税费。
+ */
+export async function createTransaction(
+  input: CreateTxInput,
+): Promise<CreateTxResult> {
+  const scope = await getScope()
+  const e = await assertEntityAccess(scope, input.entityId)
+
+  if (!(input.amount > 0)) return { ok: false, error: '金额必须大于 0' }
+  if (!input.category) return { ok: false, error: '请选择业务分类' }
+
+  // 按主体税政自动套用税率并算税
+  const profile = getTaxProfile(e.entityType, e.taxpayerType)
+  const invoiceMedium = input.invoiceMedium ?? 'none'
+  const invoiced = invoiceMedium !== 'none'
+  // 已开票才产生销项/进项税额;未开票按未计税处理
+  const rate = invoiced ? profile.vatRate : 0
+  const calc = calcTax(input.amount, rate, profile.surtaxRate)
+
+  const [row] = await db
+    .insert(transactions)
+    .values({
+      userId: scope.ownerId,
+      entityId: input.entityId,
+      bizDate: input.bizDate,
+      bizType: input.bizType,
+      category: input.category,
+      channel: input.channel || (input.bizType === 'income' ? '现金' : '银行卡'),
+      amount: String(calc.gross),
+      taxRate: String(rate),
+      taxAmount: String(calc.vat),
+      surtaxAmount: String(calc.surtax),
+      netAmount: String(calc.net),
+      invoiced,
+      invoiceMedium,
+      invoiceKind: input.invoiceKind ?? 'none',
+      invoiceNo: input.invoiceNo || null,
+      invoiceCode: input.invoiceCode || null,
+      summary: input.summary || null,
+      source: 'manual',
+      status: 'posted',
+    })
+    .returning({ id: transactions.id })
+
+  revalidatePath(`/entities/${input.entityId}`)
+  revalidatePath('/')
+  revalidatePath('/reports')
+  revalidatePath('/tax-alerts')
+  return { ok: true, id: row.id, taxAmount: calc.vat, netAmount: calc.net }
 }
