@@ -5,6 +5,10 @@ import { entities, transactions, accounts } from '@/lib/db/schema'
 import { TAX_THRESHOLDS } from '@/lib/tax'
 import { getTaxProfile, calcTax } from '@/lib/tax-policy'
 import { getScope, type Scope } from '@/lib/scope'
+import {
+  getMembershipReconciliation,
+  type MembershipReconciliation,
+} from '@/lib/membership-saas'
 import { and, eq, sql, desc, type SQL } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -867,4 +871,44 @@ export async function createTransaction(
   revalidatePath('/reports')
   revalidatePath('/tax-alerts')
   return { ok: true, id: row.id, taxAmount: calc.vat, netAmount: calc.net }
+}
+
+// ---------------------------------------------------------------------------
+// 会员对账:对接 SaaS 会员数据,与财务侧储值收入核对差异
+// ---------------------------------------------------------------------------
+export type MembershipData = {
+  recon: MembershipReconciliation
+  /** 财务账上记录的储值充值收入(账户类型 stored_value 的收入合计) */
+  bookStoredValue: number
+  /** 对账差异 = SaaS 充值 - 财务入账(理论应为 0) */
+  diff: number
+}
+
+export async function getMembershipData(entityId: number): Promise<MembershipData> {
+  const scope = await getScope()
+  const e = await assertEntityAccess(scope, entityId)
+
+  const recon = await getMembershipReconciliation(e.code)
+
+  // 财务侧:该主体储值渠道的收入合计
+  const [book] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, scope.ownerId),
+        eq(transactions.entityId, entityId),
+        eq(transactions.bizType, 'income'),
+        eq(transactions.channel, '储值余额'),
+      ),
+    )
+  const bookStoredValue = Math.round(Number(book?.total ?? 0))
+
+  return {
+    recon,
+    bookStoredValue,
+    diff: recon.totalTopUp - bookStoredValue,
+  }
 }

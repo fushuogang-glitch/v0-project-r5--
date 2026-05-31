@@ -17,6 +17,7 @@ import {
   getEntityTransactions,
   getTaxAlerts,
   getEntityTaxPolicy,
+  getMembershipData,
 } from '@/app/actions/finance'
 import { getStoreAccounts } from '@/app/actions/org'
 import { getScope } from '@/lib/scope'
@@ -26,6 +27,7 @@ import { TaxAlertBar } from '@/components/tax-alert-bar'
 import { StoreAccountManager } from '@/components/store-account-manager'
 import { TransactionForm } from '@/components/transaction-form'
 import { TaxPolicyCard } from '@/components/tax-policy-card'
+import { MembershipPanel } from '@/components/membership-panel'
 import { invoiceMediumLabel, invoiceKindLabel } from '@/lib/invoice-meta'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -66,12 +68,13 @@ export default async function EntityDetailPage({
   }
 
   const scope = await getScope()
-  const [accounts, txs, alerts, storeUsers, taxPolicy] = await Promise.all([
+  const [accounts, txs, alerts, storeUsers, taxPolicy, membership] = await Promise.all([
     getEntityAccounts(entityId),
     getEntityTransactions(entityId, 100),
     getTaxAlerts(entityId),
     scope.role === 'group' ? getStoreAccounts(entityId) : Promise.resolve([]),
     getEntityTaxPolicy(entityId),
+    getMembershipData(entityId),
   ])
 
   const { entity, summary } = detail
@@ -120,6 +123,7 @@ export default async function EntityDetailPage({
           <TabsTrigger value="accounts">收款账户</TabsTrigger>
           <TabsTrigger value="transactions">流水明细</TabsTrigger>
           <TabsTrigger value="tax">税务额度</TabsTrigger>
+          <TabsTrigger value="membership">会员对账</TabsTrigger>
           {scope.role === 'group' && (
             <TabsTrigger value="access">门店账号</TabsTrigger>
           )}
@@ -352,6 +356,11 @@ export default async function EntityDetailPage({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* 会员对账 */}
+        <TabsContent value="membership" className="mt-4">
+          <MembershipPanel data={membership} />
         </TabsContent>
 
         {/* 门店账号(仅集团端) */}
