@@ -82,6 +82,10 @@ export const entities = pgTable('entities', {
   region: text('region'), // 区域 / 大区
   city: text('city'),
   address: text('address'),
+  phone: text('phone'), // 联系电话
+  taxAuthority: text('taxAuthority'), // 主管税务局
+  bankName: text('bankName'), // 开户行
+  bankAccount: text('bankAccount'), // 对公银行账号
   status: text('status').notNull().default('active'), // active 经营中 | closed 已注销
   establishDate: date('establishDate'), // 成立日期
   createdAt: timestamp('createdAt').notNull().defaultNow(),

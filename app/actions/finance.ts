@@ -612,6 +612,10 @@ export type EntityDetail = {
     region: string | null
     city: string | null
     address: string | null
+    phone: string | null
+    taxAuthority: string | null
+    bankName: string | null
+    bankAccount: string | null
     status: string
     establishDate: string | null
   }
@@ -666,6 +670,10 @@ export async function getEntityDetail(entityId: number): Promise<EntityDetail> {
       region: e.region,
       city: e.city,
       address: e.address,
+      phone: e.phone,
+      taxAuthority: e.taxAuthority,
+      bankName: e.bankName,
+      bankAccount: e.bankAccount,
       status: e.status,
       establishDate: e.establishDate,
     },

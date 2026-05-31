@@ -156,6 +156,97 @@ export async function createEntity(input: {
   return { ok: true, entityId: created.id }
 }
 
+export type CreateAccountResult = { ok: true } | { ok: false; error: string }
+
+/** 为某主体手动添加一个收款账户 */
+export async function createAccount(input: {
+  entityId: number
+  name: string
+  accountType: string
+  channel: string
+  accountNo?: string
+  holder?: string
+}): Promise<CreateAccountResult> {
+  const scope = await getScope()
+  if (scope.role !== 'group') {
+    return { ok: false, error: '只有集团管理员可以添加收款账户' }
+  }
+  if (!input.name.trim()) return { ok: false, error: '请填写账户名称' }
+  if (!input.channel.trim()) return { ok: false, error: '请填写收款渠道' }
+
+  // 校验主体归属
+  const [entity] = await db
+    .select({ id: entities.id })
+    .from(entities)
+    .where(and(eq(entities.id, input.entityId), eq(entities.userId, scope.ownerId)))
+    .limit(1)
+  if (!entity) return { ok: false, error: '主体不存在或无权操作' }
+
+  await db.insert(accounts).values({
+    userId: scope.ownerId,
+    entityId: input.entityId,
+    name: input.name.trim(),
+    accountType: input.accountType || 'bank',
+    channel: input.channel.trim(),
+    accountNo: input.accountNo?.trim() || null,
+    holder: input.holder?.trim() || null,
+    status: 'active',
+  })
+
+  revalidatePath(`/entities/${input.entityId}`)
+  return { ok: true }
+}
+
+export type UpdateEntityInfoResult = { ok: true } | { ok: false; error: string }
+
+/** 信息登记:更新主体的工商 / 税务 / 银行登记信息 */
+export async function updateEntityInfo(input: {
+  entityId: number
+  legalPerson?: string
+  creditCode?: string
+  region?: string
+  city?: string
+  address?: string
+  phone?: string
+  taxAuthority?: string
+  bankName?: string
+  bankAccount?: string
+  establishDate?: string
+}): Promise<UpdateEntityInfoResult> {
+  const scope = await getScope()
+  if (scope.role !== 'group') {
+    return { ok: false, error: '只有集团管理员可以登记主体信息' }
+  }
+
+  const [entity] = await db
+    .select({ id: entities.id })
+    .from(entities)
+    .where(and(eq(entities.id, input.entityId), eq(entities.userId, scope.ownerId)))
+    .limit(1)
+  if (!entity) return { ok: false, error: '主体不存在或无权操作' }
+
+  const norm = (v?: string) => (v && v.trim() ? v.trim() : null)
+  await db
+    .update(entities)
+    .set({
+      legalPerson: norm(input.legalPerson),
+      creditCode: norm(input.creditCode),
+      region: norm(input.region),
+      city: norm(input.city),
+      address: norm(input.address),
+      phone: norm(input.phone),
+      taxAuthority: norm(input.taxAuthority),
+      bankName: norm(input.bankName),
+      bankAccount: norm(input.bankAccount),
+      establishDate: norm(input.establishDate),
+    })
+    .where(and(eq(entities.id, input.entityId), eq(entities.userId, scope.ownerId)))
+
+  revalidatePath(`/entities/${input.entityId}`)
+  revalidatePath('/entities')
+  return { ok: true }
+}
+
 /** 列出某主体已绑定的门店端账号 */
 export async function getStoreAccounts(entityId: number) {
   const scope = await getScope()

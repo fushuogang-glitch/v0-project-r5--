@@ -28,6 +28,9 @@ import { StoreAccountManager } from '@/components/store-account-manager'
 import { TransactionForm } from '@/components/transaction-form'
 import { TaxPolicyCard } from '@/components/tax-policy-card'
 import { MembershipPanel } from '@/components/membership-panel'
+import { AccountForm } from '@/components/account-form'
+import { EntityInfoForm } from '@/components/entity-info-form'
+import { Progress } from '@/components/ui/progress'
 import { invoiceMediumLabel, invoiceKindLabel } from '@/lib/invoice-meta'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -127,6 +130,9 @@ export default async function EntityDetailPage({
           {scope.role === 'group' && (
             <TabsTrigger value="access">门店账号</TabsTrigger>
           )}
+          {scope.role === 'group' && (
+            <TabsTrigger value="settings">设置</TabsTrigger>
+          )}
         </TabsList>
 
         {/* 经营概况 */}
@@ -170,10 +176,15 @@ export default async function EntityDetailPage({
         <TabsContent value="accounts" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">收款账户明细</CardTitle>
-              <CardDescription>
-                各收款渠道累计收款 {formatCompactCurrency(totalReceived)}
-              </CardDescription>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">收款账户明细</CardTitle>
+                  <CardDescription>
+                    各收款渠道累计收款 {formatCompactCurrency(totalReceived)}
+                  </CardDescription>
+                </div>
+                {scope.role === 'group' && <AccountForm entityId={entity.id} />}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -184,7 +195,7 @@ export default async function EntityDetailPage({
                       <TableHead>类型</TableHead>
                       <TableHead>账号</TableHead>
                       <TableHead className="text-right">累计收款</TableHead>
-                      <TableHead className="text-right">占比</TableHead>
+                      <TableHead className="w-[200px]">收款占比</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -206,8 +217,13 @@ export default async function EntityDetailPage({
                           <TableCell className="text-right tabular-nums font-medium">
                             {formatCurrency(a.received)}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums text-muted-foreground">
-                            {formatPercent(pct)}
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Progress value={pct} className="h-2 flex-1" />
+                              <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                                {formatPercent(pct)}
+                              </span>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -379,6 +395,23 @@ export default async function EntityDetailPage({
                   entityName={entity.name}
                   accounts={storeUsers}
                 />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* 设置 · 信息登记 */}
+        {scope.role === 'group' && (
+          <TabsContent value="settings" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">信息登记</CardTitle>
+                <CardDescription>
+                  登记 {entity.name} 的工商、税务与银行信息,用于报税与开票资料
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EntityInfoForm entity={entity} />
               </CardContent>
             </Card>
           </TabsContent>
