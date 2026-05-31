@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { getEntityPerformance, getTaxAlerts } from '@/app/actions/finance'
+import { getScope } from '@/lib/scope'
 import { PageHeader } from '@/components/page-header'
+import { CreateEntityDialog } from '@/components/create-entity-dialog'
 import {
   Card,
   CardContent,
@@ -28,9 +30,10 @@ const ENTITY_TYPE_LABEL: Record<string, string> = {
 }
 
 export default async function EntitiesPage() {
-  const [entities, alerts] = await Promise.all([
+  const [entities, alerts, scope] = await Promise.all([
     getEntityPerformance(),
     getTaxAlerts(),
+    getScope(),
   ])
 
   const alertMap = new Map(alerts.map((a) => [a.entityId, a]))
@@ -43,6 +46,7 @@ export default async function EntitiesPage() {
       <PageHeader
         title="主体管理"
         description="集团下属各独立纳税主体台账与经营对比"
+        action={scope.role === 'group' ? <CreateEntityDialog /> : null}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

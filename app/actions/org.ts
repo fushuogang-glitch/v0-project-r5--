@@ -2,7 +2,7 @@
 
 import { auth } from '@/lib/auth'
 import { db, pool } from '@/lib/db'
-import { user as userTable, entities } from '@/lib/db/schema'
+import { user as userTable, entities, accounts } from '@/lib/db/schema'
 import { getScope, VIEW_COOKIE } from '@/lib/scope'
 import { and, eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
@@ -74,6 +74,86 @@ export async function createStoreAccount(input: {
 
   revalidatePath('/entities')
   return { ok: true }
+}
+
+export type CreateEntityResult =
+  | { ok: true; entityId: number }
+  | { ok: false; error: string }
+
+/** 集团总部开设新门店:创建主体并自动套帐(生成默认收款账户) */
+export async function createEntity(input: {
+  name: string
+  city: string
+  entityType?: string
+  taxpayerType?: string
+  legalPerson?: string
+  region?: string
+  creditCode?: string
+}): Promise<CreateEntityResult> {
+  const scope = await getScope()
+  if (scope.role !== 'group') {
+    return { ok: false, error: '只有集团总部可以开设新门店' }
+  }
+  if (!input.name.trim()) return { ok: false, error: '请填写门店名称' }
+  if (!input.city.trim()) return { ok: false, error: '请填写所在城市' }
+
+  const entityType = input.entityType ?? 'store'
+  const taxpayerType = input.taxpayerType ?? 'small'
+
+  // 自动生成主体编号:取当前集团下主体数量 + 1
+  const existing = await db
+    .select({ id: entities.id })
+    .from(entities)
+    .where(eq(entities.userId, scope.ownerId))
+  const code = `ME${String(existing.length + 1).padStart(3, '0')}`
+
+  const [created] = await db
+    .insert(entities)
+    .values({
+      userId: scope.ownerId,
+      name: input.name.trim(),
+      code,
+      entityType,
+      taxpayerType,
+      legalPerson: input.legalPerson?.trim() || null,
+      region: input.region?.trim() || input.city.trim(),
+      city: input.city.trim(),
+      creditCode: input.creditCode?.trim() || null,
+      status: 'active',
+      establishDate: new Date().toISOString().slice(0, 10),
+    })
+    .returning({ id: entities.id })
+
+  // 套帐:为新门店生成一套默认收款账户
+  const holder = `${input.city.trim()}${input.name.trim()}`
+  const defaults = [
+    { name: '微信收款', accountType: 'wechat', channel: '微信' },
+    { name: '支付宝收款', accountType: 'alipay', channel: '支付宝' },
+    { name: '对公银行账户', accountType: 'bank', channel: '银行卡' },
+    { name: '门店现金', accountType: 'cash', channel: '现金' },
+    { name: '会员储值账户', accountType: 'stored_value', channel: '储值余额' },
+  ]
+  await db.insert(accounts).values(
+    defaults.map((d) => ({
+      userId: scope.ownerId,
+      entityId: created.id,
+      name: d.name,
+      accountType: d.accountType,
+      channel: d.channel,
+      accountNo:
+        d.accountType === 'bank'
+          ? `**** **** **** ${1000 + created.id}`
+          : d.accountType === 'cash'
+            ? null
+            : `${holder}-${d.channel}`,
+      holder,
+      status: 'active',
+    })),
+  )
+
+  revalidatePath('/entities')
+  revalidatePath('/', 'layout')
+  return { ok: true, entityId: created.id }
 }
 
 /** 列出某主体已绑定的门店端账号 */
