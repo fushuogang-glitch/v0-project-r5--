@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   Wallet,
   Store,
+  PieChart,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -42,6 +43,7 @@ const groupNav: NavItem[] = [
   { title: '主体管理', href: '/entities', icon: Building2 },
   { title: '收款账户', href: '/accounts', icon: Wallet },
   { title: '财务报表', href: '/reports', icon: BarChart3 },
+  { title: '股权管理', href: '/equity', icon: PieChart },
   { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
   { title: '设置', href: '/settings', icon: Settings },
 ]
@@ -56,6 +58,7 @@ function storeNav(entityId: number | null): NavItem[] {
     },
     { title: '收款账户', href: '/accounts', icon: Wallet },
     { title: '财务报表', href: '/reports', icon: BarChart3 },
+    { title: '股权分红', href: '/equity', icon: PieChart },
     { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
   ]
 }

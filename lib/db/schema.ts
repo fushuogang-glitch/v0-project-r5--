@@ -131,6 +131,21 @@ export const accounts = pgTable('accounts', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
+// 三层股权:银股(实股出资)/ 身股(岗位人力股)/ 发展股(带教激励股),与单店关联
+export const shareholders = pgTable('shareholders', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 数据归属(集团 owner)
+  entityId: integer('entityId').notNull(), // 关联门店/主体
+  name: text('name').notNull(), // 持股人姓名
+  shareType: text('shareType').notNull(), // bank 银股 | position 身股 | growth 发展股
+  ratio: numeric('ratio', { precision: 5, scale: 2 }).notNull().default('0'), // 分红权比例(%)
+  position: text('position'), // 岗位(店长/顾问/外部股东)
+  effectiveDate: date('effectiveDate'), // 生效日期
+  status: text('status').notNull().default('active'), // active 在册 | exited 已退出
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
 export type Account = typeof accounts.$inferSelect
+export type Shareholder = typeof shareholders.$inferSelect
