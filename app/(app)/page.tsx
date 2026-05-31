@@ -7,6 +7,7 @@ import {
   getRevenueByCategory,
   getTaxAlerts,
 } from '@/app/actions/finance'
+import { getScope } from '@/lib/scope'
 import { PageHeader } from '@/components/page-header'
 import { KpiCard } from '@/components/kpi-card'
 import { TrendChart } from '@/components/charts/trend-chart'
@@ -23,7 +24,8 @@ import { Badge } from '@/components/ui/badge'
 import { formatCompactCurrency, formatPercent } from '@/lib/format'
 
 export default async function DashboardPage() {
-  const [summary, trend, entities, revByCat, alerts] = await Promise.all([
+  const [scope, summary, trend, entities, revByCat, alerts] = await Promise.all([
+    getScope(),
     getGroupSummary(),
     getMonthlyTrend(),
     getEntityPerformance(),
@@ -34,16 +36,24 @@ export default async function DashboardPage() {
   const topEntities = entities.slice(0, 5)
   const topAlerts = alerts.slice(0, 4)
 
+  // 是否聚焦在单个门店(门店端账号,或集团端切换到了某主体视图)
+  const focused = scope.role === 'store' || scope.entityId != null
+  const focusName = focused ? (entities[0]?.name ?? '当前门店') : null
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6 lg:p-8">
       <PageHeader
-        title="集团驾驶舱"
-        description="全集团多主体经营财务与税务风险一屏总览"
+        title={focused ? `${focusName} · 经营驾驶舱` : '集团驾驶舱'}
+        description={
+          focused
+            ? '本门店经营财务与税务风险概览'
+            : '全集团多主体经营财务与税务风险一屏总览'
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label="集团总营收"
+          label={focused ? '门店营收' : '集团总营收'}
           value={formatCompactCurrency(summary.totalRevenue)}
           icon={Wallet}
           delta={summary.revenueMoM}
@@ -74,7 +84,9 @@ export default async function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">营收 · 成本 · 利润趋势</CardTitle>
-            <CardDescription>全集团近 6 个月月度走势</CardDescription>
+            <CardDescription>
+              {focused ? '本门店' : '全集团'}近 6 个月月度走势
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <TrendChart data={trend} />
@@ -145,7 +157,9 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">营收品类构成</CardTitle>
-            <CardDescription>全集团各服务 / 产品占比</CardDescription>
+            <CardDescription>
+              {focused ? '本门店' : '全集团'}各服务 / 产品占比
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <CategoryDonut data={revByCat} />
