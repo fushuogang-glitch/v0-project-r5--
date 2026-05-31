@@ -185,6 +185,25 @@ export const positions = pgTable('positions', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
+// 月度工资明细:每名员工每月一行,拆分基本工资/提成/补贴/扣款/实发
+// entityId 冗余记录所属门店,便于「门店工资 ÷ 营业额」占比统计
+export const salaries = pgTable('salaries', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 数据归属(集团 owner)
+  employeeId: integer('employeeId').notNull(), // 员工
+  entityId: integer('entityId'), // 所属门店(集团员工为空)
+  year: integer('year').notNull(),
+  month: integer('month').notNull(), // 1-12
+  baseSalary: numeric('baseSalary', { precision: 12, scale: 2 }).notNull().default('0'), // 基本工资
+  commission: numeric('commission', { precision: 12, scale: 2 }).notNull().default('0'), // 提成
+  allowance: numeric('allowance', { precision: 12, scale: 2 }).notNull().default('0'), // 补贴
+  deduction: numeric('deduction', { precision: 12, scale: 2 }).notNull().default('0'), // 扣款
+  netPay: numeric('netPay', { precision: 12, scale: 2 }).notNull().default('0'), // 实发
+  note: text('note'),
+  source: text('source').notNull().default('manual'), // manual 手工 | agent 接口录入
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
 export type Account = typeof accounts.$inferSelect
@@ -192,3 +211,4 @@ export type Shareholder = typeof shareholders.$inferSelect
 export type Employee = typeof employees.$inferSelect
 export type Department = typeof departments.$inferSelect
 export type Position = typeof positions.$inferSelect
+export type Salary = typeof salaries.$inferSelect
