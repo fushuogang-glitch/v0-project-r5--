@@ -131,11 +131,13 @@ export const accounts = pgTable('accounts', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
-// 三层股权:银股(实股出资)/ 身股(岗位人力股)/ 发展股(带教激励股),与单店关联
+// 三层股权:银股(实股出资)/ 身股(岗位人力股)/ 发展股(带教激励股)
+// level=entity 与单店关联;level=group 为集团层,基于全部门店合并净利润分红
 export const shareholders = pgTable('shareholders', {
   id: serial('id').primaryKey(),
   userId: text('userId').notNull(), // 数据归属(集团 owner)
-  entityId: integer('entityId').notNull(), // 关联门店/主体
+  level: text('level').notNull().default('entity'), // group 集团层 | entity 门店层
+  entityId: integer('entityId'), // 关联门店/主体(集团层为空)
   name: text('name').notNull(), // 持股人姓名
   shareType: text('shareType').notNull(), // bank 银股 | position 身股 | growth 发展股
   ratio: numeric('ratio', { precision: 5, scale: 2 }).notNull().default('0'), // 分红权比例(%)
