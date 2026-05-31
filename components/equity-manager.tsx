@@ -51,6 +51,7 @@ import {
   removeShareholder,
   type EquityData,
   type DividendForecast,
+  type GroupDividendForecast,
 } from '@/app/actions/equity'
 
 const TYPE_COLOR: Record<ShareType, string> = {
@@ -398,7 +399,15 @@ function DividendForecastCard({ forecast }: { forecast: DividendForecast }) {
   )
 }
 
-function AddShareholderDialog({ entityId, onDone }: { entityId: number; onDone: () => void }) {
+function AddShareholderDialog({
+  entityId,
+  level = 'entity',
+  onDone,
+}: {
+  entityId?: number
+  level?: 'group' | 'entity'
+  onDone: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -413,6 +422,7 @@ function AddShareholderDialog({ entityId, onDone }: { entityId: number; onDone: 
     setError(null)
     startTransition(async () => {
       const res = await addShareholder({
+        level,
         entityId,
         name: form.name,
         shareType: form.shareType,
@@ -504,6 +514,155 @@ function AddShareholderDialog({ entityId, onDone }: { entityId: number; onDone: 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+export function GroupEquityManager({
+  data,
+  forecast,
+  canEdit,
+}: {
+  data: { rows: EquityData['rows']; summary: EquityData['summary'] }
+  forecast: GroupDividendForecast | null
+  canEdit: boolean
+}) {
+  const router = useRouter()
+  const { summary, rows } = data
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          集团层股东跨门店持股,分红基数为旗下全部门店的合并税后净利润
+        </p>
+        {canEdit && <AddShareholderDialog level="group" onDone={() => router.refresh()} />}
+      </div>
+
+      <ReleaseStructure summary={summary} />
+
+      {summary.warnings.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+            <AlertTriangle className="size-4" />
+            合规校验提示
+          </div>
+          <ul className="ml-6 list-disc text-sm text-destructive/90">
+            {summary.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">集团股权台账</CardTitle>
+          <CardDescription>
+            银股(创始/投资人出资)/ 身股(集团高管激励)/ 发展股,分红权释放总额上限{' '}
+            {EQUITY_RULES.releaseCap}%
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rows.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              暂无集团股权登记,{canEdit ? '点击右上角「登记持股人」开始' : '请联系集团管理员登记'}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>持股人</TableHead>
+                    <TableHead>股型</TableHead>
+                    <TableHead>岗位</TableHead>
+                    <TableHead className="text-right">分红权</TableHead>
+                    {canEdit && <TableHead className="w-12" />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r) => {
+                    const st = r.shareType as ShareType
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-medium text-foreground">{r.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={TYPE_BADGE[st]}>
+                            {SHARE_TYPE_LABEL[st]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{r.position ?? '—'}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatPercent(r.ratio)}
+                        </TableCell>
+                        {canEdit && (
+                          <TableCell>
+                            <RemoveButton id={r.id} onDone={() => router.refresh()} />
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 合并净利润来源 */}
+      {forecast && forecast.byEntity.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">合并净利润来源</CardTitle>
+            <CardDescription>各门店税后净利润汇总构成集团可分配利润</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>门店</TableHead>
+                    <TableHead className="text-right">税后净利润</TableHead>
+                    <TableHead className="text-right">占比</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {forecast.byEntity.map((e) => {
+                    const pct =
+                      forecast.distributableProfit > 0
+                        ? (e.netProfit / forecast.distributableProfit) * 100
+                        : 0
+                    return (
+                      <TableRow key={e.entityId}>
+                        <TableCell className="font-medium text-foreground">
+                          {e.entityName}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(e.netProfit)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {formatPercent(Math.round(pct * 10) / 10)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+              <div className="mt-4 flex justify-end border-t pt-4 text-sm">
+                <span className="text-muted-foreground">
+                  合并净利润{' '}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatCurrency(forecast.distributableProfit)}
+                  </span>
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {forecast && <DividendForecastCard forecast={forecast} />}
+    </div>
   )
 }
 

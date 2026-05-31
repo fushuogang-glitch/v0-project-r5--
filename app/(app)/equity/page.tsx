@@ -1,8 +1,14 @@
 import { getScope, getViewableEntities } from '@/lib/scope'
-import { getEquityData, getDividendForecast } from '@/app/actions/equity'
+import {
+  getEquityData,
+  getDividendForecast,
+  getGroupEquityData,
+  getGroupDividendForecast,
+} from '@/app/actions/equity'
 import { PageHeader } from '@/components/page-header'
-import { EquityManager } from '@/components/equity-manager'
+import { EquityManager, GroupEquityManager } from '@/components/equity-manager'
 import { Card, CardContent } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PieChart } from 'lucide-react'
 
 export default async function EquityPage({
@@ -18,7 +24,7 @@ export default async function EquityPage({
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6 lg:p-8">
       <PageHeader
         title="股权管理"
-        description="三层股权(银股 / 身股 / 发展股)结构、分红权释放与年度分红测算 · 与单店关联"
+        description="集团层与门店层双层股权 · 三层结构(银股 / 身股 / 发展股)、分红权释放与年度分红测算"
       />
 
       {entities.length === 0 ? (
@@ -32,14 +38,41 @@ export default async function EquityPage({
             </p>
           </CardContent>
         </Card>
+      ) : scope.role === 'group' ? (
+        <Tabs defaultValue="group" className="w-full">
+          <TabsList>
+            <TabsTrigger value="group">集团股权</TabsTrigger>
+            <TabsTrigger value="entity">门店股权</TabsTrigger>
+          </TabsList>
+          <TabsContent value="group" className="mt-6">
+            {await renderGroup()}
+          </TabsContent>
+          <TabsContent value="entity" className="mt-6">
+            {await renderEntity(scope, entities, sp.entity)}
+          </TabsContent>
+        </Tabs>
       ) : (
-        await renderManager(scope, entities, sp.entity)
+        await renderEntity(scope, entities, sp.entity)
       )}
     </div>
   )
 }
 
-async function renderManager(
+async function renderGroup() {
+  const [data, forecast] = await Promise.all([getGroupEquityData(), getGroupDividendForecast()])
+  if (!data) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center text-sm text-muted-foreground">
+          无权查看集团股权数据
+        </CardContent>
+      </Card>
+    )
+  }
+  return <GroupEquityManager data={data} forecast={forecast} canEdit />
+}
+
+async function renderEntity(
   scope: Awaited<ReturnType<typeof getScope>>,
   entities: { id: number; name: string }[],
   requested?: string,
