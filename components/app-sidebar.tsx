@@ -7,6 +7,8 @@ import {
   BarChart3,
   Building2,
   ShieldAlert,
+  Wallet,
+  Store,
   LogOut,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
@@ -32,20 +34,42 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
-const navItems = [
+type NavItem = { title: string; href: string; icon: typeof LayoutDashboard }
+
+const groupNav: NavItem[] = [
   { title: '集团驾驶舱', href: '/', icon: LayoutDashboard },
   { title: '主体管理', href: '/entities', icon: Building2 },
+  { title: '收款账户', href: '/accounts', icon: Wallet },
   { title: '财务报表', href: '/reports', icon: BarChart3 },
   { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
 ]
 
+function storeNav(entityId: number | null): NavItem[] {
+  return [
+    { title: '门店驾驶舱', href: '/', icon: LayoutDashboard },
+    {
+      title: '门店详情',
+      href: entityId ? `/entities/${entityId}` : '/entities',
+      icon: Store,
+    },
+    { title: '收款账户', href: '/accounts', icon: Wallet },
+    { title: '财务报表', href: '/reports', icon: BarChart3 },
+    { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
+  ]
+}
+
 export function AppSidebar({
   user,
+  role = 'group',
+  storeEntityId = null,
 }: {
   user: { name: string; email: string }
+  role?: 'group' | 'store'
+  storeEntityId?: number | null
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const navItems = role === 'store' ? storeNav(storeEntityId) : groupNav
 
   const handleSignOut = async () => {
     await authClient.signOut()

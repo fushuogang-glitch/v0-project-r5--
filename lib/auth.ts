@@ -14,6 +14,26 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
   },
+  user: {
+    additionalFields: {
+      // 角色与数据范围。input:false 表示注册时不可由前端设置,只能服务端写入。
+      role: { type: 'string', required: false, defaultValue: 'group', input: false },
+      ownerId: { type: 'string', required: false, input: false },
+      entityId: { type: 'number', required: false, input: false },
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        // 新注册的集团管理员:数据归属指向自身
+        after: async (createdUser) => {
+          await pool.query('UPDATE "user" SET "ownerId" = $1 WHERE id = $1', [
+            createdUser.id,
+          ])
+        },
+      },
+    },
+  },
   trustedOrigins: [
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),

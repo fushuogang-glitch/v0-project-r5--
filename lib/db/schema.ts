@@ -18,6 +18,10 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('emailVerified').notNull().default(false),
   image: text('image'),
+  // 角色与数据范围(多租户隔离)
+  role: text('role').notNull().default('group'), // group 集团管理员 | store 门店端
+  ownerId: text('ownerId'), // 所属集团的 userId(集团管理员=自身);用于数据归属
+  entityId: integer('entityId'), // 门店端账号锁定的主体 id
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -103,5 +107,20 @@ export const transactions = pgTable('transactions', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
+// 收款账户:每个主体下的微信/支付宝/对公银行/现金/POS/储值卡等收款渠道
+export const accounts = pgTable('accounts', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 数据归属(集团 owner)
+  entityId: integer('entityId').notNull(), // 所属主体/门店
+  name: text('name').notNull(), // 账户名称
+  accountType: text('accountType').notNull(), // wechat|alipay|bank|cash|pos|stored_value
+  channel: text('channel').notNull(), // 与流水 channel 对应,用于汇总收款额
+  accountNo: text('accountNo'), // 账号/卡号(脱敏)
+  holder: text('holder'), // 开户名/持有人
+  status: text('status').notNull().default('active'), // active | disabled
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
+export type Account = typeof accounts.$inferSelect

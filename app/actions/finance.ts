@@ -1,20 +1,37 @@
 'use server'
 
-import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { entities, transactions } from '@/lib/db/schema'
+import { entities, transactions, accounts } from '@/lib/db/schema'
 import { TAX_THRESHOLDS } from '@/lib/tax'
-import { and, eq, sql, desc } from 'drizzle-orm'
-import { headers } from 'next/headers'
+import { getScope, type Scope } from '@/lib/scope'
+import { and, eq, sql, desc, type SQL } from 'drizzle-orm'
 
-async function getUserId() {
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user) throw new Error('Unauthorized')
-  return session.user.id
+// ---------------------------------------------------------------------------
+// 范围助手:所有业务查询都按 ownerId 隔离;若 scope 锁定了某主体(门店端 / 集团
+// 选中单店视图),再追加 entityId 过滤。
+// ---------------------------------------------------------------------------
+function txWhere(scope: Scope, extra: SQL[] = []) {
+  const conds: SQL[] = [eq(transactions.userId, scope.ownerId), ...extra]
+  if (scope.entityId != null) conds.push(eq(transactions.entityId, scope.entityId))
+  return and(...conds)
+}
+
+/** 校验某主体属于当前 scope,门店端只能访问自己的主体 */
+async function assertEntityAccess(scope: Scope, entityId: number) {
+  if (scope.role === 'store' && scope.entityId !== entityId) {
+    throw new Error('无权访问该主体')
+  }
+  const [e] = await db
+    .select()
+    .from(entities)
+    .where(and(eq(entities.id, entityId), eq(entities.userId, scope.ownerId)))
+    .limit(1)
+  if (!e) throw new Error('主体不存在')
+  return e
 }
 
 // ---------------------------------------------------------------------------
-// 演示数据:用户首次进入且没有任何主体时,自动生成多主体台账与近 6 个月统一流水
+// 演示数据:首次进入自动生成多主体台账、统一流水与收款账户
 // ---------------------------------------------------------------------------
 const DEMO_ENTITIES = [
   { name: '璞境美学(北京)有限公司', code: 'PJ-BJ-01', entityType: 'company', taxpayerType: 'general', region: '华北', city: '北京', legalPerson: '王雪', base: 1280000 },
@@ -36,25 +53,72 @@ const EXPENSE_RATIO: Record<string, number> = {
   市场营销: 0.08,
 }
 
+// 收款账户模板(channel 与流水 channel 对应,用于汇总收款额)
+const ACCOUNT_TEMPLATES = [
+  { name: '微信收款', accountType: 'wechat', channel: '微信' },
+  { name: '支付宝收款', accountType: 'alipay', channel: '支付宝' },
+  { name: '对公银行账户', accountType: 'bank', channel: '银行卡' },
+  { name: '门店现金', accountType: 'cash', channel: '现金' },
+  { name: '会员储值账户', accountType: 'stored_value', channel: '储值余额' },
+]
+
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min
 }
 
-// 含税金额拆出税额与不含税额
 function splitTax(amount: number, rate: number) {
   const net = amount / (1 + rate)
   const tax = amount - net
   return { net: Number(net.toFixed(2)), tax: Number(tax.toFixed(2)) }
 }
 
+function seedAccountsFor(userId: string, entityId: number, city: string) {
+  return ACCOUNT_TEMPLATES.map((t) => ({
+    userId,
+    entityId,
+    name: t.name,
+    accountType: t.accountType,
+    channel: t.channel,
+    accountNo:
+      t.accountType === 'bank'
+        ? '6217 **** **** ' + Math.floor(rand(1000, 9999))
+        : t.accountType === 'cash'
+          ? null
+          : '****' + Math.floor(rand(1000, 9999)),
+    holder: `${city}璞境`,
+    status: 'active',
+  }))
+}
+
 export async function ensureSeedData() {
-  const userId = await getUserId()
+  const scope = await getScope()
+  // 门店端不触发播种(数据由集团创建)
+  if (scope.role === 'store') return { seeded: false }
+  const userId = scope.ownerId
+
   const existing = await db
     .select({ id: entities.id })
     .from(entities)
     .where(eq(entities.userId, userId))
-    .limit(1)
-  if (existing.length > 0) return { seeded: false }
+
+  // 已有主体:仅补建缺失的收款账户(老数据兼容)
+  if (existing.length > 0) {
+    const hasAccounts = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.userId, userId))
+      .limit(1)
+    if (hasAccounts.length === 0) {
+      const ents = await db
+        .select({ id: entities.id, city: entities.city })
+        .from(entities)
+        .where(eq(entities.userId, userId))
+      for (const e of ents) {
+        await db.insert(accounts).values(seedAccountsFor(userId, e.id, e.city ?? ''))
+      }
+    }
+    return { seeded: false }
+  }
 
   const now = new Date()
 
@@ -78,7 +142,8 @@ export async function ensureSeedData() {
       })
       .returning({ id: entities.id, taxpayerType: entities.taxpayerType })
 
-    // 一般纳税人增值税率按 6%(现代服务),小规模按 1%
+    await db.insert(accounts).values(seedAccountsFor(userId, entity.id, e.city))
+
     const vatRate = entity.taxpayerType === 'general' ? 0.06 : 0.01
     const rows: (typeof transactions.$inferInsert)[] = []
 
@@ -137,7 +202,7 @@ export async function ensureSeedData() {
 }
 
 // ---------------------------------------------------------------------------
-// 集团驾驶舱汇总
+// 汇总(集团总览,或 scope 锁定单主体时即该主体口径)
 // ---------------------------------------------------------------------------
 export type GroupSummary = {
   totalRevenue: number
@@ -152,12 +217,15 @@ export type GroupSummary = {
 }
 
 export async function getGroupSummary(): Promise<GroupSummary> {
-  const userId = await getUserId()
+  const scope = await getScope()
 
   const [income] = await db
-    .select({ total: sql<string>`coalesce(sum(${transactions.amount}), 0)` })
+    .select({
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+      tax: sql<string>`coalesce(sum(${transactions.taxAmount}), 0)`,
+    })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.bizType, 'income')))
+    .where(txWhere(scope, [eq(transactions.bizType, 'income')]))
 
   const [expense] = await db
     .select({
@@ -165,17 +233,14 @@ export async function getGroupSummary(): Promise<GroupSummary> {
       tax: sql<string>`coalesce(sum(${transactions.taxAmount}), 0)`,
     })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.bizType, 'expense')))
+    .where(txWhere(scope, [eq(transactions.bizType, 'expense')]))
 
-  const [incomeTax] = await db
-    .select({ tax: sql<string>`coalesce(sum(${transactions.taxAmount}), 0)` })
-    .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.bizType, 'income')))
-
+  const entityConds: SQL[] = [eq(entities.userId, scope.ownerId), eq(entities.status, 'active')]
+  if (scope.entityId != null) entityConds.push(eq(entities.id, scope.entityId))
   const [entityAgg] = await db
     .select({ count: sql<string>`count(*)` })
     .from(entities)
-    .where(and(eq(entities.userId, userId), eq(entities.status, 'active')))
+    .where(and(...entityConds))
 
   const trend = await getMonthlyTrend()
   const last = trend[trend.length - 1]
@@ -203,7 +268,7 @@ export async function getGroupSummary(): Promise<GroupSummary> {
     netProfit,
     profitMargin: totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
     entityCount: Number(entityAgg?.count ?? 0),
-    totalTax: Number(incomeTax?.tax ?? 0) + Number(expense?.tax ?? 0),
+    totalTax: Number(income?.tax ?? 0) + Number(expense?.tax ?? 0),
     revenueMoM,
     profitMoM,
     warningCount,
@@ -211,7 +276,7 @@ export async function getGroupSummary(): Promise<GroupSummary> {
 }
 
 // ---------------------------------------------------------------------------
-// 月度趋势(营收 / 成本 / 利润)
+// 月度趋势
 // ---------------------------------------------------------------------------
 export type MonthlyPoint = {
   month: string
@@ -221,7 +286,7 @@ export type MonthlyPoint = {
 }
 
 export async function getMonthlyTrend(): Promise<MonthlyPoint[]> {
-  const userId = await getUserId()
+  const scope = await getScope()
 
   const rows = await db
     .select({
@@ -230,7 +295,7 @@ export async function getMonthlyTrend(): Promise<MonthlyPoint[]> {
       total: sql<string>`sum(${transactions.amount})`,
     })
     .from(transactions)
-    .where(eq(transactions.userId, userId))
+    .where(txWhere(scope))
     .groupBy(sql`to_char(${transactions.bizDate}, 'YYYY-MM')`, transactions.bizType)
 
   const map = new Map<string, { revenue: number; expense: number }>()
@@ -271,11 +336,14 @@ export type EntityPerformance = {
 }
 
 export async function getEntityPerformance(): Promise<EntityPerformance[]> {
-  const userId = await getUserId()
+  const scope = await getScope()
+
+  const entConds: SQL[] = [eq(entities.userId, scope.ownerId)]
+  if (scope.entityId != null) entConds.push(eq(entities.id, scope.entityId))
   const list = await db
     .select()
     .from(entities)
-    .where(eq(entities.userId, userId))
+    .where(and(...entConds))
     .orderBy(entities.code)
 
   const agg = await db
@@ -285,7 +353,7 @@ export async function getEntityPerformance(): Promise<EntityPerformance[]> {
       total: sql<string>`sum(${transactions.amount})`,
     })
     .from(transactions)
-    .where(eq(transactions.userId, userId))
+    .where(txWhere(scope))
     .groupBy(transactions.entityId, transactions.bizType)
 
   const incomeMap = new Map<number, number>()
@@ -320,17 +388,14 @@ export async function getEntityPerformance(): Promise<EntityPerformance[]> {
 }
 
 // ---------------------------------------------------------------------------
-// 税务额度临界点��警(PRD 灵魂功能)
+// 税务额度临界点预警
 // ---------------------------------------------------------------------------
 export type TaxAlert = {
   entityId: number
   entityName: string
   taxpayerType: string
-  // 近 12 个月销售额(用于一般纳税人 500 万 / 小微 300 万判断)
   trailingRevenue: number
-  // 本季度销售额(用于小规模增值税 30 万判断)
   quarterRevenue: number
-  // 适用的关键阈值与占比
   threshold: number
   thresholdLabel: string
   usedPercent: number
@@ -338,11 +403,14 @@ export type TaxAlert = {
 }
 
 export async function getTaxAlerts(): Promise<TaxAlert[]> {
-  const userId = await getUserId()
+  const scope = await getScope()
+
+  const entConds: SQL[] = [eq(entities.userId, scope.ownerId), eq(entities.status, 'active')]
+  if (scope.entityId != null) entConds.push(eq(entities.id, scope.entityId))
   const list = await db
     .select()
     .from(entities)
-    .where(and(eq(entities.userId, userId), eq(entities.status, 'active')))
+    .where(and(...entConds))
 
   const now = new Date()
   const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
@@ -360,7 +428,7 @@ export async function getTaxAlerts(): Promise<TaxAlert[]> {
       .from(transactions)
       .where(
         and(
-          eq(transactions.userId, userId),
+          eq(transactions.userId, scope.ownerId),
           eq(transactions.entityId, e.id),
           eq(transactions.bizType, 'income'),
           sql`${transactions.bizDate} >= ${fmt(trailingStart)}`,
@@ -372,7 +440,7 @@ export async function getTaxAlerts(): Promise<TaxAlert[]> {
       .from(transactions)
       .where(
         and(
-          eq(transactions.userId, userId),
+          eq(transactions.userId, scope.ownerId),
           eq(transactions.entityId, e.id),
           eq(transactions.bizType, 'income'),
           sql`${transactions.bizDate} >= ${fmt(quarterStart)}`,
@@ -387,7 +455,6 @@ export async function getTaxAlerts(): Promise<TaxAlert[]> {
     let usedPercent: number
 
     if (e.taxpayerType === 'small') {
-      // 小规模:盯一般纳税人强制认定线 500 万(近 12 个月)与季度增值税免征线 30 万
       const generalPct = (trailingRevenue / TAX_THRESHOLDS.generalTaxpayerYearly) * 100
       const vatPct = (quarterRevenue / TAX_THRESHOLDS.vatQuarterly) * 100
       if (generalPct >= vatPct) {
@@ -400,7 +467,6 @@ export async function getTaxAlerts(): Promise<TaxAlert[]> {
         usedPercent = vatPct
       }
     } else {
-      // 一般纳税人:盯小微企业所得税优惠线 300 万(年营收口径)
       threshold = TAX_THRESHOLDS.smallProfitYearly
       thresholdLabel = '小微企业优惠线(年300万)'
       usedPercent = (trailingRevenue / TAX_THRESHOLDS.smallProfitYearly) * 100
@@ -422,39 +488,275 @@ export async function getTaxAlerts(): Promise<TaxAlert[]> {
     })
   }
 
-  // 风险高的排前面
   return alerts.sort((a, b) => b.usedPercent - a.usedPercent)
 }
 
 // ---------------------------------------------------------------------------
-// 分类构成(营收按品类 / 成本按类目)
+// 分类构成
 // ---------------------------------------------------------------------------
 export type CategorySlice = { category: string; amount: number }
 
 export async function getRevenueByCategory(): Promise<CategorySlice[]> {
-  const userId = await getUserId()
+  const scope = await getScope()
   const rows = await db
     .select({
       category: transactions.category,
       total: sql<string>`sum(${transactions.amount})`,
     })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.bizType, 'income')))
+    .where(txWhere(scope, [eq(transactions.bizType, 'income')]))
     .groupBy(transactions.category)
     .orderBy(desc(sql`sum(${transactions.amount})`))
   return rows.map((r) => ({ category: r.category, amount: Math.round(Number(r.total)) }))
 }
 
 export async function getExpenseByCategory(): Promise<CategorySlice[]> {
-  const userId = await getUserId()
+  const scope = await getScope()
   const rows = await db
     .select({
       category: transactions.category,
       total: sql<string>`sum(${transactions.amount})`,
     })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.bizType, 'expense')))
+    .where(txWhere(scope, [eq(transactions.bizType, 'expense')]))
     .groupBy(transactions.category)
     .orderBy(desc(sql`sum(${transactions.amount})`))
   return rows.map((r) => ({ category: r.category, amount: Math.round(Number(r.total)) }))
+}
+
+// ---------------------------------------------------------------------------
+// 收款账户:列表 + 每个账户的累计收款额(按 entityId + channel 汇总收入流水)
+// ---------------------------------------------------------------------------
+export type AccountWithRevenue = {
+  id: number
+  entityId: number
+  entityName: string
+  name: string
+  accountType: string
+  channel: string
+  accountNo: string | null
+  holder: string | null
+  status: string
+  received: number
+}
+
+export async function getAccounts(): Promise<AccountWithRevenue[]> {
+  const scope = await getScope()
+
+  const accConds: SQL[] = [eq(accounts.userId, scope.ownerId)]
+  if (scope.entityId != null) accConds.push(eq(accounts.entityId, scope.entityId))
+  const list = await db
+    .select()
+    .from(accounts)
+    .where(and(...accConds))
+    .orderBy(accounts.entityId, accounts.id)
+
+  // 按 (entityId, channel) 汇总收入
+  const agg = await db
+    .select({
+      entityId: transactions.entityId,
+      channel: transactions.channel,
+      total: sql<string>`sum(${transactions.amount})`,
+    })
+    .from(transactions)
+    .where(txWhere(scope, [eq(transactions.bizType, 'income')]))
+    .groupBy(transactions.entityId, transactions.channel)
+
+  const revMap = new Map<string, number>()
+  for (const a of agg) revMap.set(`${a.entityId}::${a.channel}`, Number(a.total))
+
+  const entList = await db
+    .select({ id: entities.id, name: entities.name })
+    .from(entities)
+    .where(eq(entities.userId, scope.ownerId))
+  const nameMap = new Map(entList.map((e) => [e.id, e.name]))
+
+  return list.map((a) => ({
+    id: a.id,
+    entityId: a.entityId,
+    entityName: nameMap.get(a.entityId) ?? '-',
+    name: a.name,
+    accountType: a.accountType,
+    channel: a.channel,
+    accountNo: a.accountNo,
+    holder: a.holder,
+    status: a.status,
+    received: Math.round(revMap.get(`${a.entityId}::${a.channel}`) ?? 0),
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// 单主体明细(供单店详情页使用)
+// ---------------------------------------------------------------------------
+export type EntityDetail = {
+  entity: {
+    id: number
+    name: string
+    code: string
+    entityType: string
+    taxpayerType: string
+    creditCode: string | null
+    legalPerson: string | null
+    region: string | null
+    city: string | null
+    address: string | null
+    status: string
+    establishDate: string | null
+  }
+  summary: { revenue: number; expense: number; profit: number; margin: number; totalTax: number }
+}
+
+export async function getEntityDetail(entityId: number): Promise<EntityDetail> {
+  const scope = await getScope()
+  const e = await assertEntityAccess(scope, entityId)
+
+  const [income] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+      tax: sql<string>`coalesce(sum(${transactions.taxAmount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, scope.ownerId),
+        eq(transactions.entityId, entityId),
+        eq(transactions.bizType, 'income'),
+      ),
+    )
+
+  const [expense] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+      tax: sql<string>`coalesce(sum(${transactions.taxAmount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, scope.ownerId),
+        eq(transactions.entityId, entityId),
+        eq(transactions.bizType, 'expense'),
+      ),
+    )
+
+  const revenue = Math.round(Number(income?.total ?? 0))
+  const exp = Math.round(Number(expense?.total ?? 0))
+  const profit = revenue - exp
+
+  return {
+    entity: {
+      id: e.id,
+      name: e.name,
+      code: e.code,
+      entityType: e.entityType,
+      taxpayerType: e.taxpayerType,
+      creditCode: e.creditCode,
+      legalPerson: e.legalPerson,
+      region: e.region,
+      city: e.city,
+      address: e.address,
+      status: e.status,
+      establishDate: e.establishDate,
+    },
+    summary: {
+      revenue,
+      expense: exp,
+      profit,
+      margin: revenue > 0 ? (profit / revenue) * 100 : 0,
+      totalTax: Math.round(Number(income?.tax ?? 0) + Number(expense?.tax ?? 0)),
+    },
+  }
+}
+
+export type EntityAccount = {
+  id: number
+  name: string
+  accountType: string
+  accountNo: string | null
+  holder: string | null
+  status: string
+  received: number
+}
+
+export async function getEntityAccounts(entityId: number): Promise<EntityAccount[]> {
+  const scope = await getScope()
+  await assertEntityAccess(scope, entityId)
+
+  const list = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.userId, scope.ownerId), eq(accounts.entityId, entityId)))
+    .orderBy(accounts.id)
+
+  const agg = await db
+    .select({
+      channel: transactions.channel,
+      total: sql<string>`sum(${transactions.amount})`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, scope.ownerId),
+        eq(transactions.entityId, entityId),
+        eq(transactions.bizType, 'income'),
+      ),
+    )
+    .groupBy(transactions.channel)
+
+  const revMap = new Map(agg.map((a) => [a.channel, Number(a.total)]))
+
+  return list.map((a) => ({
+    id: a.id,
+    name: a.name,
+    accountType: a.accountType,
+    accountNo: a.accountNo,
+    holder: a.holder,
+    status: a.status,
+    received: Math.round(revMap.get(a.channel) ?? 0),
+  }))
+}
+
+export type TxRow = {
+  id: number
+  bizDate: string
+  bizType: string
+  category: string
+  channel: string
+  amount: number
+  invoiced: boolean
+  summary: string | null
+}
+
+export async function getEntityTransactions(
+  entityId: number,
+  limit = 30,
+): Promise<TxRow[]> {
+  const scope = await getScope()
+  await assertEntityAccess(scope, entityId)
+
+  const rows = await db
+    .select({
+      id: transactions.id,
+      bizDate: transactions.bizDate,
+      bizType: transactions.bizType,
+      category: transactions.category,
+      channel: transactions.channel,
+      amount: transactions.amount,
+      invoiced: transactions.invoiced,
+      summary: transactions.summary,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, scope.ownerId), eq(transactions.entityId, entityId)))
+    .orderBy(desc(transactions.bizDate), desc(transactions.id))
+    .limit(limit)
+
+  return rows.map((r) => ({
+    id: r.id,
+    bizDate: r.bizDate,
+    bizType: r.bizType,
+    category: r.category,
+    channel: r.channel,
+    amount: Math.round(Number(r.amount)),
+    invoiced: r.invoiced,
+    summary: r.summary,
+  }))
 }

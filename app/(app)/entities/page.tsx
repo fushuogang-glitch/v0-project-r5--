@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getEntityPerformance, getTaxAlerts } from '@/app/actions/finance'
 import { PageHeader } from '@/components/page-header'
 import {
@@ -118,12 +119,17 @@ export default async function EntitiesPage() {
                   return (
                     <TableRow key={e.id}>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{e.name}</span>
+                        <Link
+                          href={`/entities/${e.id}`}
+                          className="flex flex-col group"
+                        >
+                          <span className="font-medium text-foreground group-hover:text-primary group-hover:underline underline-offset-4">
+                            {e.name}
+                          </span>
                           <span className="text-xs text-muted-foreground">
                             {e.code} · {e.legalPerson ?? '-'}
                           </span>
-                        </div>
+                        </Link>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {ENTITY_TYPE_LABEL[e.entityType] ?? e.entityType}
