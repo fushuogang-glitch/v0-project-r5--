@@ -147,7 +147,25 @@ export const shareholders = pgTable('shareholders', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
+// 员工主数据:贯穿组织架构、工资、股权的中心实体
+// level=group 集团层(高管,entityId 空)| level=entity 门店层;managerId 指向上级员工构成组织树
+export const employees = pgTable('employees', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 数据归属(集团 owner)
+  level: text('level').notNull().default('entity'), // group 集团层 | entity 门店层
+  entityId: integer('entityId'), // 所属门店(集团层为空)
+  name: text('name').notNull(), // 姓名
+  position: text('position'), // 岗位(店长/美容顾问/技师/集团高管)
+  jobLevel: text('jobLevel').notNull().default('staff'), // exec 高管 | manager 店长 | supervisor 主管 | staff 员工
+  managerId: integer('managerId'), // 直接上级员工 id(组织树)
+  phone: text('phone'),
+  hireDate: date('hireDate'), // 入职日期
+  status: text('status').notNull().default('active'), // active 在职 | left 离职
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
 export type Account = typeof accounts.$inferSelect
 export type Shareholder = typeof shareholders.$inferSelect
+export type Employee = typeof employees.$inferSelect
