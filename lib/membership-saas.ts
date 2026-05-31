@@ -150,8 +150,9 @@ function buildMockReconciliation(seed: string): MembershipReconciliation {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 100000
   const rnd = (n: number) => {
+    // LCG 低位比特随机性差,取高位比特再取模,避免 % n 结果固定
     h = (h * 1103515245 + 12345) % 2147483648
-    return h % n
+    return Math.floor(h / 0x10000) % n
   }
 
   const names = ['王雅琴', '李梦洁', '陈思远', '赵敏', '周慧', '孙佳', '吴婷', '郑爽']
