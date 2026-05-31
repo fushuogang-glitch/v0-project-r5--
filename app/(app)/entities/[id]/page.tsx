@@ -42,13 +42,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { accountMeta } from '@/lib/account-meta'
 import { formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/format'
+import { entityTypeLabel, taxpayerLabel } from '@/lib/entity-meta'
 import { cn } from '@/lib/utils'
-
-const ENTITY_TYPE_LABEL: Record<string, string> = {
-  company: '有限公司',
-  sole: '个体户',
-  store: '门店',
-}
 
 export default async function EntityDetailPage({
   params,
@@ -92,9 +87,7 @@ export default async function EntityDetailPage({
 
       <PageHeader
         title={entity.name}
-        description={`${entity.code} · ${ENTITY_TYPE_LABEL[entity.entityType] ?? entity.entityType} · ${
-          entity.taxpayerType === 'general' ? '一般纳税人' : '小规模纳税人'
-        }`}
+        description={`${entity.code} · ${entityTypeLabel(entity.entityType)} · ${taxpayerLabel(entity.taxpayerType)}`}
         action={
           <Badge
             variant={entity.status === 'active' ? 'secondary' : 'outline'}

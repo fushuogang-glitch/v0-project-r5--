@@ -21,13 +21,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Building2, TrendingUp, ShieldAlert } from 'lucide-react'
 import { formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/format'
+import { entityTypeLabel } from '@/lib/entity-meta'
 import { cn } from '@/lib/utils'
-
-const ENTITY_TYPE_LABEL: Record<string, string> = {
-  company: '有限公司',
-  sole: '个体户',
-  store: '门店',
-}
 
 export default async function EntitiesPage() {
   const [entities, alerts, scope] = await Promise.all([
@@ -136,7 +131,7 @@ export default async function EntitiesPage() {
                         </Link>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {ENTITY_TYPE_LABEL[e.entityType] ?? e.entityType}
+                        {entityTypeLabel(e.entityType)}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-normal">

@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { Plus, Loader2 } from 'lucide-react'
 import { createEntity } from '@/app/actions/org'
+import { ENTITY_TYPES, TAXPAYER_TYPES } from '@/lib/entity-meta'
 
 export function CreateEntityDialog() {
   const router = useRouter()
@@ -32,7 +33,7 @@ export function CreateEntityDialog() {
   const [form, setForm] = useState({
     name: '',
     city: '',
-    entityType: 'store',
+    entityType: 'sole',
     taxpayerType: 'small',
     legalPerson: '',
   })
@@ -51,7 +52,7 @@ export function CreateEntityDialog() {
       return
     }
     setOpen(false)
-    setForm({ name: '', city: '', entityType: 'store', taxpayerType: 'small', legalPerson: '' })
+    setForm({ name: '', city: '', entityType: 'sole', taxpayerType: 'small', legalPerson: '' })
     router.push(`/entities/${res.entityId}`)
     router.refresh()
   }
@@ -61,22 +62,22 @@ export function CreateEntityDialog() {
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
-          开设新门店
+          新增主体 / 门店
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>开设新门店</DialogTitle>
+          <DialogTitle>新增主体 / 门店</DialogTitle>
           <DialogDescription>
-            创建新的纳税主体,系统将自动套帐(生成一套默认收款账户)。
+            创建新的纳税主体(公司 / 个体工商户 / 工作室等),系统将自动套帐(生成一套默认收款账户)。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-2">
-            <Label htmlFor="name">门店名称</Label>
+            <Label htmlFor="name">主体 / 门店名称</Label>
             <Input
               id="name"
-              placeholder="如:璞境·杭州西湖店"
+              placeholder="如:广州天河璞境美容服务部"
               value={form.name}
               onChange={(e) => update('name', e.target.value)}
             />
@@ -112,9 +113,11 @@ export function CreateEntityDialog() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="store">门店</SelectItem>
-                  <SelectItem value="company">公司</SelectItem>
-                  <SelectItem value="sole">个体户</SelectItem>
+                  {ENTITY_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -128,8 +131,11 @@ export function CreateEntityDialog() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="small">小规模纳税人</SelectItem>
-                  <SelectItem value="general">一般纳税人</SelectItem>
+                  {TAXPAYER_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
