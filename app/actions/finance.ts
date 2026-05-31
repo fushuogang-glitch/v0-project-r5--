@@ -9,6 +9,7 @@ import {
   getMembershipReconciliation,
   type MembershipReconciliation,
 } from '@/lib/membership-saas'
+import { buildVouchers, type Voucher } from '@/lib/accounting'
 import { and, eq, sql, desc, type SQL } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -919,4 +920,192 @@ export async function getMembershipData(entityId: number): Promise<MembershipDat
     bookStoredValue,
     diff: recon.totalTopUp - bookStoredValue,
   }
+}
+
+// ---------------------------------------------------------------------------
+// 自动记账凭证:从流水实时派生借贷凭证
+// ---------------------------------------------------------------------------
+export async function getEntityVouchers(entityId: number): Promise<Voucher[]> {
+  const scope = await getScope()
+  await assertEntityAccess(scope, entityId)
+
+  const rows = await db
+    .select({
+      id: transactions.id,
+      bizDate: transactions.bizDate,
+      bizType: transactions.bizType,
+      category: transactions.category,
+      channel: transactions.channel,
+      amount: transactions.amount,
+      netAmount: transactions.netAmount,
+      taxAmount: transactions.taxAmount,
+      invoiceKind: transactions.invoiceKind,
+      summary: transactions.summary,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, scope.ownerId), eq(transactions.entityId, entityId)))
+
+  return buildVouchers(
+    rows.map((r) => ({
+      id: r.id,
+      bizDate: r.bizDate,
+      bizType: r.bizType,
+      category: r.category,
+      channel: r.channel,
+      amount: Number(r.amount),
+      netAmount: Number(r.netAmount),
+      taxAmount: Number(r.taxAmount),
+      invoiceKind: r.invoiceKind,
+      summary: r.summary,
+    })),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 财务报表:利润表 + 资产负债表(从流水按会计口径派生)
+// ---------------------------------------------------------------------------
+export type IncomeStatement = {
+  revenue: number
+  cogs: number
+  taxAndSurcharge: number
+  sellingExpense: number
+  adminExpense: number
+  operatingProfit: number
+  nonOpExpense: number
+  totalProfit: number
+  incomeTax: number
+  netProfit: number
+  incomeTaxLabel: string
+}
+
+export type BalanceSheet = {
+  monetaryFunds: number
+  totalAssets: number
+  prepaidReceipts: number
+  taxPayable: number
+  totalLiabilities: number
+  retainedEarnings: number
+  totalEquity: number
+}
+
+const COGS_CATS = new Set(['产品采购', '耗材成本'])
+const SELLING_CATS = new Set(['市场推广'])
+const ADMIN_CATS = new Set(['房租物业', '人力薪酬', '水电杂费', '设备折旧'])
+const TAX_CATS = new Set(['税费'])
+
+export async function getFinancialStatements(entityId: number): Promise<{
+  income: IncomeStatement
+  balance: BalanceSheet
+}> {
+  const scope = await getScope()
+  const e = await assertEntityAccess(scope, entityId)
+  const profile = getTaxProfile(e.entityType, e.taxpayerType)
+
+  const rows = await db
+    .select({
+      bizType: transactions.bizType,
+      category: transactions.category,
+      channel: transactions.channel,
+      amount: transactions.amount,
+      netAmount: transactions.netAmount,
+      taxAmount: transactions.taxAmount,
+      surtaxAmount: transactions.surtaxAmount,
+      invoiceKind: transactions.invoiceKind,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, scope.ownerId), eq(transactions.entityId, entityId)))
+
+  let revenue = 0
+  let cogs = 0
+  let sellingExpense = 0
+  let adminExpense = 0
+  let nonOpExpense = 0
+  let surtaxTotal = 0
+  let taxCatExpense = 0
+  let vatOutput = 0
+  let vatInput = 0
+  let cashIn = 0
+  let cashOut = 0
+  let prepaidTopup = 0
+  let prepaidUsed = 0
+
+  for (const r of rows) {
+    const gross = Number(r.amount)
+    const net = Number(r.netAmount) || gross
+    const vat = Number(r.taxAmount) || 0
+    const surtax = Number(r.surtaxAmount) || 0
+    const isStoredChannel = r.channel.includes('储值')
+
+    if (r.bizType === 'income') {
+      if (!isStoredChannel) cashIn += gross
+      if (r.category === '会员储值') {
+        prepaidTopup += gross // 预收账款增加
+      } else {
+        revenue += net
+        vatOutput += vat
+        surtaxTotal += surtax
+        if (isStoredChannel) prepaidUsed += gross // 储值消费核销预收
+      }
+    } else {
+      // 支出:专票按不含税入账(进项可抵扣),其余全额入账
+      const special = r.invoiceKind === 'special' && vat > 0
+      const booked = special ? net : gross
+      if (special) vatInput += vat
+      if (!isStoredChannel) cashOut += gross
+
+      if (COGS_CATS.has(r.category)) cogs += booked
+      else if (SELLING_CATS.has(r.category)) sellingExpense += booked
+      else if (TAX_CATS.has(r.category)) taxCatExpense += booked
+      else if (r.category === '其他支出') nonOpExpense += booked
+      else adminExpense += booked
+    }
+  }
+
+  const taxAndSurcharge = Math.round(surtaxTotal + taxCatExpense)
+  revenue = Math.round(revenue)
+  cogs = Math.round(cogs)
+  sellingExpense = Math.round(sellingExpense)
+  adminExpense = Math.round(adminExpense)
+  nonOpExpense = Math.round(nonOpExpense)
+
+  const operatingProfit = revenue - cogs - taxAndSurcharge - sellingExpense - adminExpense
+  const totalProfit = operatingProfit - nonOpExpense
+
+  // 所得税估算:企业按小微 5%,个人经营所得按 10% 简化估算
+  const incomeRate = profile.incomeTaxKind === 'corporate' ? 0.05 : 0.1
+  const incomeTax = totalProfit > 0 ? Math.round(totalProfit * incomeRate) : 0
+  const netProfit = totalProfit - incomeTax
+
+  const income: IncomeStatement = {
+    revenue,
+    cogs,
+    taxAndSurcharge,
+    sellingExpense,
+    adminExpense,
+    operatingProfit,
+    nonOpExpense,
+    totalProfit,
+    incomeTax,
+    netProfit,
+    incomeTaxLabel: profile.incomeTaxLabel,
+  }
+
+  const monetaryFunds = Math.round(cashIn - cashOut)
+  const prepaidReceipts = Math.round(prepaidTopup - prepaidUsed)
+  const taxPayable = Math.round(vatOutput - vatInput + surtaxTotal)
+  const totalAssets = monetaryFunds
+  const totalLiabilities = prepaidReceipts + taxPayable
+  const retainedEarnings = totalAssets - totalLiabilities
+
+  const balance: BalanceSheet = {
+    monetaryFunds,
+    totalAssets,
+    prepaidReceipts,
+    taxPayable,
+    totalLiabilities,
+    retainedEarnings,
+    totalEquity: retainedEarnings,
+  }
+
+  return { income, balance }
 }

@@ -18,6 +18,8 @@ import {
   getTaxAlerts,
   getEntityTaxPolicy,
   getMembershipData,
+  getEntityVouchers,
+  getFinancialStatements,
 } from '@/app/actions/finance'
 import { getStoreAccounts } from '@/app/actions/org'
 import { getScope } from '@/lib/scope'
@@ -30,6 +32,8 @@ import { TaxPolicyCard } from '@/components/tax-policy-card'
 import { MembershipPanel } from '@/components/membership-panel'
 import { AccountForm } from '@/components/account-form'
 import { EntityInfoForm } from '@/components/entity-info-form'
+import { VoucherList } from '@/components/voucher-list'
+import { FinancialStatements } from '@/components/financial-statements'
 import { Progress } from '@/components/ui/progress'
 import { invoiceMediumLabel, invoiceKindLabel } from '@/lib/invoice-meta'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -71,14 +75,17 @@ export default async function EntityDetailPage({
   }
 
   const scope = await getScope()
-  const [accounts, txs, alerts, storeUsers, taxPolicy, membership] = await Promise.all([
-    getEntityAccounts(entityId),
-    getEntityTransactions(entityId, 100),
-    getTaxAlerts(entityId),
-    scope.role === 'group' ? getStoreAccounts(entityId) : Promise.resolve([]),
-    getEntityTaxPolicy(entityId),
-    getMembershipData(entityId),
-  ])
+  const [accounts, txs, alerts, storeUsers, taxPolicy, membership, vouchers, statements] =
+    await Promise.all([
+      getEntityAccounts(entityId),
+      getEntityTransactions(entityId, 100),
+      getTaxAlerts(entityId),
+      scope.role === 'group' ? getStoreAccounts(entityId) : Promise.resolve([]),
+      getEntityTaxPolicy(entityId),
+      getMembershipData(entityId),
+      getEntityVouchers(entityId),
+      getFinancialStatements(entityId),
+    ])
 
   const { entity, summary } = detail
   const alert = alerts.find((a) => a.entityId === entityId)
@@ -125,6 +132,8 @@ export default async function EntityDetailPage({
           <TabsTrigger value="overview">经营概况</TabsTrigger>
           <TabsTrigger value="accounts">收款账户</TabsTrigger>
           <TabsTrigger value="transactions">流水明细</TabsTrigger>
+          <TabsTrigger value="vouchers">记账凭证</TabsTrigger>
+          <TabsTrigger value="statements">财务报表</TabsTrigger>
           <TabsTrigger value="tax">税务额度</TabsTrigger>
           <TabsTrigger value="membership">会员对账</TabsTrigger>
           {scope.role === 'group' && (
@@ -183,7 +192,7 @@ export default async function EntityDetailPage({
                     各收款渠道累计收款 {formatCompactCurrency(totalReceived)}
                   </CardDescription>
                 </div>
-                {scope.role === 'group' && <AccountForm entityId={entity.id} />}
+                <AccountForm entityId={entity.id} />
               </div>
             </CardHeader>
             <CardContent>
@@ -248,6 +257,7 @@ export default async function EntityDetailPage({
                 </div>
                 <TransactionForm
                   entityId={entity.id}
+                  expenseOnly={scope.role === 'store'}
                   profile={{
                     vatRate: taxPolicy.profile.vatRate,
                     surtaxRate: taxPolicy.profile.surtaxRate,
@@ -339,6 +349,16 @@ export default async function EntityDetailPage({
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* 记账凭证 */}
+        <TabsContent value="vouchers" className="mt-4">
+          <VoucherList vouchers={vouchers} />
+        </TabsContent>
+
+        {/* 财务报表:利润表 + 资产负债表 */}
+        <TabsContent value="statements" className="mt-4">
+          <FinancialStatements income={statements.income} balance={statements.balance} />
         </TabsContent>
 
         {/* 税务额度 */}

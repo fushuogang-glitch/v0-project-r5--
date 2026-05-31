@@ -40,9 +40,11 @@ type Profile = {
 export function TransactionForm({
   entityId,
   profile,
+  expenseOnly = false,
 }: {
   entityId: number
   profile: Profile
+  expenseOnly?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -51,10 +53,10 @@ export function TransactionForm({
 
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState({
-    bizType: 'income' as 'income' | 'expense',
+    bizType: (expenseOnly ? 'expense' : 'income') as 'income' | 'expense',
     bizDate: today,
-    category: '护理服务',
-    channel: '微信',
+    category: expenseOnly ? categoriesFor('expense')[0] : '护理服务',
+    channel: expenseOnly ? '银行卡' : '微信',
     amount: '',
     invoiceMedium: 'none',
     invoiceKind: 'none',
@@ -109,38 +111,42 @@ export function TransactionForm({
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="size-4" />
-          录入流水
+          {expenseOnly ? '费用填报' : '录入流水'}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>录入收支流水</DialogTitle>
+          <DialogTitle>{expenseOnly ? '费用填报' : '录入收支流水'}</DialogTitle>
           <DialogDescription>
-            系统按本主体税政({profile.vatLabel})自动价税分离并计税。
+            {expenseOnly
+              ? '按标准费用分类填报门店支出,上传发票后自动计算可抵扣进项。'
+              : `系统按本主体税政(${profile.vatLabel})自动价税分离并计税。`}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
           <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label>收支类型</Label>
-              <Select
-                value={form.bizType}
-                onValueChange={(v) => {
-                  const t = v as 'income' | 'expense'
-                  update('bizType', t)
-                  update('category', categoriesFor(t)[0])
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="income">收入</SelectItem>
-                  <SelectItem value="expense">支出</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!expenseOnly && (
+              <div className="grid gap-2">
+                <Label>收支类型</Label>
+                <Select
+                  value={form.bizType}
+                  onValueChange={(v) => {
+                    const t = v as 'income' | 'expense'
+                    update('bizType', t)
+                    update('category', categoriesFor(t)[0])
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="income">收入</SelectItem>
+                    <SelectItem value="expense">支出</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="bizDate">业务日期</Label>
               <Input
