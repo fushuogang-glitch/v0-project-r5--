@@ -168,8 +168,9 @@ export async function createAccount(input: {
   holder?: string
 }): Promise<CreateAccountResult> {
   const scope = await getScope()
-  if (scope.role !== 'group') {
-    return { ok: false, error: '只有集团管理员可以添加收款账户' }
+  // 门店端只能为自己锁定的门店添加账户;集团端可为旗下任意主体添加
+  if (scope.role === 'store' && scope.entityId !== input.entityId) {
+    return { ok: false, error: '门店端只能管理本门店的账户' }
   }
   if (!input.name.trim()) return { ok: false, error: '请填写账户名称' }
   if (!input.channel.trim()) return { ok: false, error: '请填写收款渠道' }
