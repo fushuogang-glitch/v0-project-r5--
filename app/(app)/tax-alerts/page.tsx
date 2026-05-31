@@ -1,4 +1,5 @@
-import { getTaxAlerts, TAX_THRESHOLDS } from '@/app/actions/finance'
+import { getTaxAlerts } from '@/app/actions/finance'
+import { TAX_THRESHOLDS } from '@/lib/tax'
 import { PageHeader } from '@/components/page-header'
 import { TaxAlertBar } from '@/components/tax-alert-bar'
 import {
