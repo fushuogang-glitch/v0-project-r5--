@@ -69,14 +69,18 @@ function storeNav(entityId: number | null): NavItem[] {
   ]
 }
 
+type Badge = { count: number; urgent: boolean }
+
 export function AppSidebar({
   user,
   role = 'group',
   storeEntityId = null,
+  badges = {},
 }: {
   user: { name: string; email: string }
   role?: 'group' | 'store'
   storeEntityId?: number | null
+  badges?: Record<string, Badge>
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -114,12 +118,25 @@ export function AppSidebar({
                   item.href === '/'
                     ? pathname === '/'
                     : pathname.startsWith(item.href)
+                const badge = badges[item.href]
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={active}>
                       <Link href={item.href}>
                         <item.icon className="size-4" />
                         <span>{item.title}</span>
+                        {badge && badge.count > 0 && (
+                          <span
+                            aria-label={`${badge.count} 项待办`}
+                            className={`ml-auto flex min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold leading-5 ${
+                              badge.urgent
+                                ? 'bg-destructive text-white'
+                                : 'bg-sidebar-accent text-sidebar-accent-foreground'
+                            }`}
+                          >
+                            {badge.count > 99 ? '99+' : badge.count}
+                          </span>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

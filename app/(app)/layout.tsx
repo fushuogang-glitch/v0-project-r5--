@@ -2,9 +2,11 @@ import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ensureSeedData } from '@/app/actions/finance'
+import { generateComplianceNodes, getComplianceBadges } from '@/app/actions/compliance'
 import { getScope, getViewableEntities } from '@/lib/scope'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ViewSwitcher } from '@/components/view-switcher'
+import { ComplianceBanner } from '@/components/compliance-banner'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 
 export default async function AppLayout({
@@ -21,12 +23,17 @@ export default async function AppLayout({
   const scope = await getScope()
   const viewable = await getViewableEntities(scope)
 
+  // 生成/刷新本期合规节点(幂等),并取栏目角标
+  await generateComplianceNodes().catch(() => {})
+  const { byRoute } = await getComplianceBadges()
+
   return (
     <SidebarProvider>
       <AppSidebar
         user={{ name: session.user.name, email: session.user.email }}
         role={scope.role}
         storeEntityId={scope.role === 'store' ? scope.entityId : null}
+        badges={byRoute}
       />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/80 px-4 py-2.5 backdrop-blur">
@@ -42,6 +49,7 @@ export default async function AppLayout({
             </span>
           </div>
         </header>
+        <ComplianceBanner />
         {children}
       </SidebarInset>
     </SidebarProvider>
