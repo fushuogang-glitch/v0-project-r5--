@@ -46,6 +46,7 @@
     "date-fns": "4.1.0",
     "drizzle-orm": "^0.45.2",
     "embla-carousel-react": "8.6.0",
+    "exceljs": "^4.4.0",
     "input-otp": "1.4.2",
     "kysely": "0.28.17",
     "lucide-react": "^0.564.0",
