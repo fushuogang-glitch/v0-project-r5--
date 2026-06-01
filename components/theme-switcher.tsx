@@ -52,6 +52,16 @@ const THEMES: ThemeOption[] = [
       accent: 'oklch(0.92 0.04 150)',
     },
   },
+  {
+    value: 'wealth',
+    label: '招财金',
+    hint: '财神临门 · 暗纹',
+    swatch: {
+      primary: 'oklch(0.5 0.16 32)',
+      bg: 'oklch(0.97 0.014 50)',
+      accent: 'oklch(0.85 0.09 75)',
+    },
+  },
 ]
 
 function Swatch({ s }: { s: ThemeOption['swatch'] }) {
