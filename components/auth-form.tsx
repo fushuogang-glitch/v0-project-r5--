@@ -220,6 +220,10 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
               {isSignUp ? '去登录' : '联系您的管理员开通账号'}
             </Link>
           </p>
+
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            关联 NOTA CoreControl™ 全智能 SaaS 系统
+          </p>
         </div>
       </section>
     </main>
