@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ensureSeedData } from '@/app/actions/finance'
+import { autoSyncIfDue } from '@/app/actions/saas'
 import { generateComplianceNodes, getComplianceBadges } from '@/app/actions/compliance'
 import { getScope, getViewableEntities } from '@/lib/scope'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -22,6 +23,9 @@ export default async function AppLayout({
 
   const scope = await getScope()
   const viewable = await getViewableEntities(scope)
+
+  // 双架构:进入系统时若开启自动同步且已到间隔,静默从 SaaS 补齐流水(失败不影响渲染)
+  await autoSyncIfDue().catch(() => {})
 
   // 生成/刷新本期合规节点(幂等),并取栏目角标
   await generateComplianceNodes().catch(() => {})
