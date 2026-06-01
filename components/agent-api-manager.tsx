@@ -50,7 +50,7 @@ export function AgentApiManager({
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <KeyRound className="size-4" />
-              财务 Agent 密钥
+              SaaS API 密钥
             </CardTitle>
             <CardDescription>
               公司侧财务 Agent 凭此密钥调用接口,自动抓取门店数据并回填流水
