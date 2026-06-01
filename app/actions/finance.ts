@@ -654,6 +654,7 @@ export type AccountWithRevenue = {
   holder: string | null
   status: string
   received: number
+  maxLimit: number | null
 }
 
 export async function getAccounts(): Promise<AccountWithRevenue[]> {
@@ -698,6 +699,7 @@ export async function getAccounts(): Promise<AccountWithRevenue[]> {
     holder: a.holder,
     status: a.status,
     received: Math.round(revMap.get(`${a.entityId}::${a.channel}`) ?? 0),
+    maxLimit: a.maxLimit != null ? Number(a.maxLimit) : null,
   }))
 }
 

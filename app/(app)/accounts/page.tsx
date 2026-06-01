@@ -165,12 +165,32 @@ export default async function AccountsPage() {
                     {g.rows.map((a) => {
                       const meta = accountMeta(a.accountType)
                       const pct = subtotal > 0 ? (a.received / subtotal) * 100 : 0
+                      // 实时满额判断:累计收款 / 最高额度
+                      const hasLimit = a.maxLimit != null && a.maxLimit > 0
+                      const limitPct = hasLimit
+                        ? Math.min((a.received / (a.maxLimit as number)) * 100, 100)
+                        : 0
+                      const isFull = hasLimit && a.received >= (a.maxLimit as number)
+                      const isNear = hasLimit && !isFull && limitPct >= 80
                       return (
                         <TableRow key={a.id}>
                           <TableCell className="font-medium text-foreground">
                             <span className="flex items-center gap-2">
                               <meta.icon className="size-4 text-muted-foreground" />
                               {a.name}
+                              {isFull && (
+                                <Badge variant="destructive" className="font-normal">
+                                  已满额
+                                </Badge>
+                              )}
+                              {isNear && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500/50 font-normal text-amber-600 dark:text-amber-400"
+                                >
+                                  接近满额
+                                </Badge>
+                              )}
                             </span>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
@@ -191,7 +211,29 @@ export default async function AccountsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
-                            {formatCurrency(a.received)}
+                            <div className="flex flex-col items-end gap-1">
+                              <span>{formatCurrency(a.received)}</span>
+                              {hasLimit && (
+                                <>
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    限额 {formatCompactCurrency(a.maxLimit as number)} ·{' '}
+                                    {formatPercent(limitPct)}
+                                  </span>
+                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        isFull
+                                          ? 'bg-destructive'
+                                          : isNear
+                                            ? 'bg-amber-500'
+                                            : 'bg-primary'
+                                      }`}
+                                      style={{ width: `${limitPct}%` }}
+                                    />
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">
                             {formatPercent(pct)}
