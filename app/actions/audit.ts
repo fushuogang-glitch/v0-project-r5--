@@ -455,7 +455,7 @@ async function persist(ownerId: string, period: string, drafts: Draft[]) {
   }
 }
 
-// 手动重跑当月(或指定期间)审计
+// 手动重跑��月(或指定期间)审计
 export async function runMonthlyAudit(period?: string): Promise<{ ok: boolean; count: number }> {
   const scope = await getScope()
   const p = period ?? periodNow()
@@ -507,7 +507,7 @@ export type AuditReport = {
   }[]
 }
 
-export const DIMENSION_LABELS: Record<AuditDimension, string> = {
+const DIMENSION_LABELS: Record<AuditDimension, string> = {
   revenue: '收支平衡',
   reconciliation: '银行对账',
   tax: '税务临界',
