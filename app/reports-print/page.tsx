@@ -1,4 +1,5 @@
 import { buildReportPackage } from '@/lib/report-data'
+import { buildTaxFilingPackage } from '@/lib/tax-filing'
 import { PrintTrigger } from '@/components/print-trigger'
 
 export const dynamic = 'force-dynamic'
@@ -11,17 +12,32 @@ function fmtCell(v: string | number) {
 export default async function ReportsPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ target?: string }>
+  searchParams: Promise<{
+    kind?: string
+    target?: string
+    entity?: string
+    year?: string
+    quarter?: string
+  }>
 }) {
-  const { target: targetRaw } = await searchParams
-  const target: 'group' | number =
-    !targetRaw || targetRaw === 'group' ? 'group' : Number(targetRaw)
+  const params = await searchParams
 
   let pkg
   try {
-    pkg = await buildReportPackage(
-      target === 'group' || !Number.isFinite(target as number) ? 'group' : (target as number),
-    )
+    if (params.kind === 'filing') {
+      const entityId = Number(params.entity)
+      const year = Number(params.year) || new Date().getFullYear()
+      const quarter = Number(params.quarter) || 1
+      if (!Number.isFinite(entityId)) throw new Error('请选择纳税主体')
+      pkg = await buildTaxFilingPackage(entityId, { year, quarter })
+    } else {
+      const targetRaw = params.target
+      const target: 'group' | number =
+        !targetRaw || targetRaw === 'group' ? 'group' : Number(targetRaw)
+      pkg = await buildReportPackage(
+        target === 'group' || !Number.isFinite(target as number) ? 'group' : (target as number),
+      )
+    }
   } catch (e) {
     return (
       <main className="mx-auto max-w-2xl p-10 text-center">
@@ -89,7 +105,7 @@ export default async function ReportsPrintPage({
       </div>
 
       <footer className="mt-10 border-t border-neutral-300 pt-3 text-center text-xs text-neutral-400">
-        诺塔智财务 ERP · 本报表由系统依据记账凭证自动生成,仅供管理决策参考
+        诺塔智财务 ERP · 本报表由系统依据记账凭证自动生成,仅供管理决策与申报预填参考
       </footer>
     </main>
   )

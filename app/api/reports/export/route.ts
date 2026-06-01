@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { buildReportPackage } from '@/lib/report-data'
+import { buildTaxFilingPackage } from '@/lib/tax-filing'
 import { buildWorkbook, buildCsv, safeFileName } from '@/lib/report-export'
 
 export const dynamic = 'force-dynamic'
@@ -7,15 +8,26 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const targetRaw = searchParams.get('target') ?? 'group'
+    const kind = searchParams.get('kind') ?? 'reports'
     const format = (searchParams.get('format') ?? 'xlsx').toLowerCase()
-    const target: 'group' | number = targetRaw === 'group' ? 'group' : Number(targetRaw)
 
-    if (target !== 'group' && !Number.isFinite(target)) {
-      return NextResponse.json({ error: '无效的主体参数' }, { status: 400 })
+    let pkg
+    if (kind === 'filing') {
+      const entityId = Number(searchParams.get('entity'))
+      const year = Number(searchParams.get('year')) || new Date().getFullYear()
+      const quarter = Number(searchParams.get('quarter')) || 1
+      if (!Number.isFinite(entityId)) {
+        return NextResponse.json({ error: '无效的主体参数' }, { status: 400 })
+      }
+      pkg = await buildTaxFilingPackage(entityId, { year, quarter })
+    } else {
+      const targetRaw = searchParams.get('target') ?? 'group'
+      const target: 'group' | number = targetRaw === 'group' ? 'group' : Number(targetRaw)
+      if (target !== 'group' && !Number.isFinite(target)) {
+        return NextResponse.json({ error: '无效的主体参数' }, { status: 400 })
+      }
+      pkg = await buildReportPackage(target)
     }
-
-    const pkg = await buildReportPackage(target)
 
     if (format === 'csv') {
       const csv = buildCsv(pkg)

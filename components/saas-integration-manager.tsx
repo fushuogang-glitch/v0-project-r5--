@@ -15,6 +15,7 @@ import {
   testSaasConnection,
   saveEntityMapping,
   syncNow,
+  getSaasSettings,
   type SaasSettings,
   type SaasSyncReport,
 } from '@/app/actions/saas'
@@ -77,14 +78,20 @@ export function SaasIntegrationManager({ initial }: { initial: SaasSettings }) {
     setTimeout(() => setMsg(null), 4000)
   }
 
+  const refresh = async () => {
+    const next = await getSaasSettings()
+    setSettings(next)
+    setMappings(next.mappings)
+    setReport(next.lastSyncReport)
+  }
+
   const handleSaveConfig = () =>
     startSaveCfg(async () => {
       const res = await saveSaasConfig({ baseUrl, apiKey: apiKey || undefined })
       if (res.ok) {
         setApiKey('')
+        await refresh()
         flash('ok', '配置已保存')
-        const next = await testSaasConnection()
-        if ('settings' in next) setSettings(next.settings)
       } else {
         flash('err', res.error)
       }
@@ -92,22 +99,23 @@ export function SaasIntegrationManager({ initial }: { initial: SaasSettings }) {
 
   const handleTest = () =>
     startTest(async () => {
-      const res = await testSaasConnection({ baseUrl, apiKey: apiKey || undefined })
-      if ('settings' in res) {
-        setSettings(res.settings)
-        flash(res.ping.ok ? 'ok' : 'err', res.ping.ok ? '连接成功' : `连接失败:${res.ping.message}`)
-      } else {
-        flash('err', res.error)
-      }
+      const ping = await testSaasConnection({ baseUrl, apiKey: apiKey || undefined })
+      await refresh()
+      flash(ping.ok ? 'ok' : 'err', ping.ok ? `连接成功(${ping.source === 'live' ? '实时' : '模拟'})` : `连接失败:${ping.message}`)
     })
 
   const handleSaveMapping = () =>
     startSaveMap(async () => {
-      const res = await saveEntityMapping({
-        items: mappings.map((m) => ({ entityId: m.entityId, storeCode: m.storeCode })),
-      })
-      if (res.ok) flash('ok', '门店映射已保存')
-      else flash('err', res.error)
+      // 逐个保存映射(action 按单主体处理)
+      for (const m of mappings) {
+        const res = await saveEntityMapping({ entityId: m.entityId, storeCode: m.storeCode })
+        if (!res.ok) {
+          flash('err', res.error)
+          return
+        }
+      }
+      await refresh()
+      flash('ok', '门店映射已保存')
     })
 
   const handleSync = () =>
@@ -165,9 +173,7 @@ export function SaasIntegrationManager({ initial }: { initial: SaasSettings }) {
               <Label htmlFor="saas-key" className="text-xs">
                 API Key{' '}
                 {settings.hasKey && (
-                  <span className="text-muted-foreground">
-                    (当前 {settings.apiKeyMasked},留空不修改)
-                  </span>
+                  <span className="text-muted-foreground">(当前 {settings.apiKeyMasked},留空不修改)</span>
                 )}
               </Label>
               <Input
