@@ -294,27 +294,28 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
 }
 
 async function batchUpsertHealth(rows: unknown[][]) {
+  const COLS = 17
   const BATCH = 200
   for (let i = 0; i < rows.length; i += BATCH) {
     const slice = rows.slice(i, i + BATCH)
     const values: string[] = []
     const params: unknown[] = []
     slice.forEach((r, idx) => {
-      const b = idx * 13
-      values.push(
-        `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 12},$${b + 13})`,
-      )
+      const b = idx * COLS
+      const ph = Array.from({ length: COLS }, (_, k) => `$${b + k + 1}`).join(',')
+      values.push(`(${ph})`)
       params.push(...r)
     })
     await pool.query(
       `INSERT INTO tenant_health
-         ("tenantId","snapshotDate","tenantName","entityCount","txnCount30d","lastTxnAt","lastLoginAt","lastSyncAt","agentCount30d","auditRan","revenue30d","healthScore",status)
+         ("tenantId","snapshotDate","tenantName","entityCount","txnCount30d","lastTxnAt","lastLoginAt","lastSyncAt","agentCount30d","auditRan","revenue30d","healthScore",status,province,plan,"daysToExpiry","taxRiskOverdue")
        VALUES ${values.join(',')}
        ON CONFLICT ("tenantId","snapshotDate") DO UPDATE SET
          "tenantName"=EXCLUDED."tenantName","entityCount"=EXCLUDED."entityCount","txnCount30d"=EXCLUDED."txnCount30d",
          "lastTxnAt"=EXCLUDED."lastTxnAt","lastLoginAt"=EXCLUDED."lastLoginAt","lastSyncAt"=EXCLUDED."lastSyncAt",
          "agentCount30d"=EXCLUDED."agentCount30d","auditRan"=EXCLUDED."auditRan","revenue30d"=EXCLUDED."revenue30d",
-         "healthScore"=EXCLUDED."healthScore",status=EXCLUDED.status,"createdAt"=now()`,
+         "healthScore"=EXCLUDED."healthScore",status=EXCLUDED.status,province=EXCLUDED.province,plan=EXCLUDED.plan,
+         "daysToExpiry"=EXCLUDED."daysToExpiry","taxRiskOverdue"=EXCLUDED."taxRiskOverdue","createdAt"=now()`,
       params,
     )
   }
@@ -417,6 +418,9 @@ export type PlatformOverview = {
   totalRevenue30d: number
   openAlerts: number
   riskAlerts: number
+  expiringSoon: number
+  expired: number
+  taxOverdueTenants: number
 }
 
 export async function getPlatformOverview(): Promise<PlatformOverview> {
@@ -431,7 +435,10 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
         COUNT(*) FILTER (WHERE "entityCount"=0 AND "txnCount30d"=0)::int AS onboarding,
         COALESCE(ROUND(AVG("healthScore")),0)::int AS avg_score,
         COALESCE(SUM("entityCount"),0)::int AS entities,
-        COALESCE(SUM("revenue30d"),0) AS revenue
+        COALESCE(SUM("revenue30d"),0) AS revenue,
+        COUNT(*) FILTER (WHERE "daysToExpiry" IS NOT NULL AND "daysToExpiry" >= 0 AND "daysToExpiry" <= ${EXPIRY_WARN_DAYS})::int AS expiring,
+        COUNT(*) FILTER (WHERE "daysToExpiry" IS NOT NULL AND "daysToExpiry" < 0)::int AS expired,
+        COUNT(*) FILTER (WHERE "taxRiskOverdue" > 0)::int AS tax_overdue
        FROM tenant_health
       WHERE "snapshotDate" = (SELECT MAX("snapshotDate") FROM tenant_health)`,
   )
@@ -454,6 +461,86 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
     totalRevenue30d: Number(r.revenue ?? 0),
     openAlerts: a.open ?? 0,
     riskAlerts: a.risk ?? 0,
+    expiringSoon: r.expiring ?? 0,
+    expired: r.expired ?? 0,
+    taxOverdueTenants: r.tax_overdue ?? 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 读取:省份级地图聚合(每省客户数/活跃/风险/即将到期/收入)
+// ---------------------------------------------------------------------------
+export type ProvinceStat = {
+  province: string
+  tenants: number
+  active: number
+  risk: number
+  expiringSoon: number
+  revenue30d: number
+  avgHealthScore: number
+}
+
+export async function getProvinceStats(): Promise<ProvinceStat[]> {
+  await requirePlatformAdmin()
+  const { rows } = await pool.query(
+    `SELECT COALESCE(province, '未知') AS province,
+            COUNT(*)::int AS tenants,
+            COUNT(*) FILTER (WHERE status='ok' AND ("entityCount">0 OR "txnCount30d">0))::int AS active,
+            COUNT(*) FILTER (WHERE status IN ('risk','down'))::int AS risk,
+            COUNT(*) FILTER (WHERE "daysToExpiry" IS NOT NULL AND "daysToExpiry" >= 0 AND "daysToExpiry" <= ${EXPIRY_WARN_DAYS})::int AS expiring,
+            COALESCE(SUM("revenue30d"),0) AS revenue,
+            COALESCE(ROUND(AVG("healthScore")),0)::int AS avg_score
+       FROM tenant_health
+      WHERE "snapshotDate" = (SELECT MAX("snapshotDate") FROM tenant_health)
+      GROUP BY COALESCE(province, '未知')`,
+  )
+  return rows.map((r) => ({
+    province: r.province,
+    tenants: r.tenants,
+    active: r.active,
+    risk: r.risk,
+    expiringSoon: r.expiring,
+    revenue30d: Number(r.revenue),
+    avgHealthScore: r.avg_score,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// 读取:每日使用总结(今日活跃实例 / 新流水 / 收入 / 告警)
+// ---------------------------------------------------------------------------
+export type DailySummary = {
+  date: string
+  activeTenants: number
+  totalTxn30d: number
+  totalRevenue30d: number
+  newAlerts: number
+  resolvedToday: number
+}
+
+export async function getDailySummary(): Promise<DailySummary> {
+  await requirePlatformAdmin()
+  const { rows } = await pool.query(
+    `SELECT
+        COUNT(*) FILTER (WHERE "lastLoginAt" >= now() - interval '1 day')::int AS active,
+        COALESCE(SUM("txnCount30d"),0)::int AS txn,
+        COALESCE(SUM("revenue30d"),0) AS revenue
+       FROM tenant_health
+      WHERE "snapshotDate" = (SELECT MAX("snapshotDate") FROM tenant_health)`,
+  )
+  const r = rows[0] ?? {}
+  const al = await pool.query(
+    `SELECT COUNT(*) FILTER (WHERE "firstSeenAt" >= CURRENT_DATE)::int AS new_alerts,
+            COUNT(*) FILTER (WHERE "resolvedAt" >= CURRENT_DATE)::int AS resolved
+       FROM platform_alerts`,
+  )
+  const a = al.rows[0] ?? {}
+  return {
+    date: todayStr(),
+    activeTenants: r.active ?? 0,
+    totalTxn30d: r.txn ?? 0,
+    totalRevenue30d: Number(r.revenue ?? 0),
+    newAlerts: a.new_alerts ?? 0,
+    resolvedToday: a.resolved ?? 0,
   }
 }
 
@@ -471,33 +558,58 @@ export type TenantHealthRow = {
   lastLoginAt: string | null
   lastTxnAt: string | null
   isOnboarding: boolean
+  province: string | null
+  plan: string | null
+  daysToExpiry: number | null
+  taxRiskOverdue: number
 }
 
-export async function getTenantHealthList(filter?: 'all' | 'risk' | 'down' | 'ok'): Promise<TenantHealthRow[]> {
+function mapHealthRow(r: Record<string, unknown>): TenantHealthRow {
+  return {
+    tenantId: r.tenantId as string,
+    tenantName: r.tenantName as string,
+    entityCount: r.entityCount as number,
+    txnCount30d: r.txnCount30d as number,
+    revenue30d: Number(r.revenue30d),
+    healthScore: r.healthScore as number,
+    status: r.status as string,
+    lastLoginAt: r.lastLoginAt ? new Date(r.lastLoginAt as string).toISOString() : null,
+    lastTxnAt: r.lastTxnAt ? new Date(r.lastTxnAt as string).toISOString() : null,
+    isOnboarding: (r.entityCount as number) === 0 && (r.txnCount30d as number) === 0,
+    province: (r.province as string) ?? null,
+    plan: (r.plan as string) ?? null,
+    daysToExpiry: r.daysToExpiry == null ? null : (r.daysToExpiry as number),
+    taxRiskOverdue: (r.taxRiskOverdue as number) ?? 0,
+  }
+}
+
+const HEALTH_COLS = `"tenantId","tenantName","entityCount","txnCount30d","revenue30d","healthScore",status,"lastLoginAt","lastTxnAt",province,plan,"daysToExpiry","taxRiskOverdue"`
+
+export async function getTenantHealthList(
+  filter?: 'all' | 'risk' | 'down' | 'ok' | 'expiring' | 'tax',
+  province?: string,
+): Promise<TenantHealthRow[]> {
   await requirePlatformAdmin()
   const where: string[] = [`"snapshotDate" = (SELECT MAX("snapshotDate") FROM tenant_health)`]
+  const params: unknown[] = []
   if (filter === 'risk') where.push(`status='risk'`)
   else if (filter === 'down') where.push(`status='down'`)
   else if (filter === 'ok') where.push(`status='ok' AND ("entityCount">0 OR "txnCount30d">0)`)
+  else if (filter === 'expiring') where.push(`"daysToExpiry" IS NOT NULL AND "daysToExpiry" <= ${EXPIRY_WARN_DAYS}`)
+  else if (filter === 'tax') where.push(`"taxRiskOverdue" > 0`)
+  if (province) {
+    params.push(province)
+    where.push(`province = $${params.length}`)
+  }
   const { rows } = await pool.query(
-    `SELECT "tenantId","tenantName","entityCount","txnCount30d","revenue30d","healthScore",status,"lastLoginAt","lastTxnAt"
+    `SELECT ${HEALTH_COLS}
        FROM tenant_health
       WHERE ${where.join(' AND ')}
       ORDER BY CASE status WHEN 'down' THEN 0 WHEN 'risk' THEN 1 ELSE 2 END, "healthScore" ASC
       LIMIT 500`,
+    params,
   )
-  return rows.map((r) => ({
-    tenantId: r.tenantId,
-    tenantName: r.tenantName,
-    entityCount: r.entityCount,
-    txnCount30d: r.txnCount30d,
-    revenue30d: Number(r.revenue30d),
-    healthScore: r.healthScore,
-    status: r.status,
-    lastLoginAt: r.lastLoginAt ? new Date(r.lastLoginAt).toISOString() : null,
-    lastTxnAt: r.lastTxnAt ? new Date(r.lastTxnAt).toISOString() : null,
-    isOnboarding: r.entityCount === 0 && r.txnCount30d === 0,
-  }))
+  return rows.map(mapHealthRow)
 }
 
 // ---------------------------------------------------------------------------
@@ -584,20 +696,7 @@ export async function getTenantHealthDetail(tenantId: string): Promise<TenantDet
     [tenantId],
   )
   return {
-    row: l
-      ? {
-          tenantId: l.tenantId,
-          tenantName: l.tenantName,
-          entityCount: l.entityCount,
-          txnCount30d: l.txnCount30d,
-          revenue30d: Number(l.revenue30d),
-          healthScore: l.healthScore,
-          status: l.status,
-          lastLoginAt: l.lastLoginAt ? new Date(l.lastLoginAt).toISOString() : null,
-          lastTxnAt: l.lastTxnAt ? new Date(l.lastTxnAt).toISOString() : null,
-          isOnboarding: l.entityCount === 0 && l.txnCount30d === 0,
-        }
-      : null,
+    row: l ? mapHealthRow(l) : null,
     lastSyncAt: l?.lastSyncAt ? new Date(l.lastSyncAt).toISOString() : null,
     agentCount30d: l?.agentCount30d ?? 0,
     auditRan: l?.auditRan ?? false,
@@ -619,4 +718,57 @@ export async function getTenantHealthDetail(tenantId: string): Promise<TenantDet
       updatedAt: new Date(r.updatedAt).toISOString(),
     })),
   }
+}
+
+// ---------------------------------------------------------------------------
+// 读取:端口/同步监控(各租户 SaaS 接口对接状态与同步心跳)
+// ---------------------------------------------------------------------------
+export type PortMonitorRow = {
+  tenantId: string
+  tenantName: string
+  province: string | null
+  configured: boolean
+  status: string // unconfigured | connected | error
+  baseUrl: string | null
+  lastTestedAt: string | null
+  lastSyncedAt: string | null
+  syncDaysAgo: number | null
+  agentCount30d: number
+}
+
+export async function getPortMonitor(): Promise<PortMonitorRow[]> {
+  await requirePlatformAdmin()
+  // 以租户主账号为准 left join saas_config 与最新健康快照
+  const { rows } = await pool.query(
+    `SELECT u.id AS tenant_id,
+            COALESCE(u.name, u."displayUsername", u.username, u.email) AS tenant_name,
+            u.province AS province,
+            c.status AS status, c."baseUrl" AS base_url,
+            c."lastTestedAt" AS last_tested, c."lastSyncedAt" AS last_synced,
+            COALESCE(h."agentCount30d", 0) AS agent30
+       FROM "user" u
+       LEFT JOIN saas_config c ON c."userId" = u.id
+       LEFT JOIN tenant_health h ON h."tenantId" = u.id
+            AND h."snapshotDate" = (SELECT MAX("snapshotDate") FROM tenant_health)
+      WHERE u.role='group' AND u."financeRole" IS NULL AND u."ownerId" = u.id
+      ORDER BY CASE COALESCE(c.status,'unconfigured')
+               WHEN 'error' THEN 0 WHEN 'unconfigured' THEN 1 ELSE 2 END,
+               last_synced ASC NULLS FIRST
+      LIMIT 500`,
+  )
+  return rows.map((r) => {
+    const lastSynced = r.last_synced ? new Date(r.last_synced) : null
+    return {
+      tenantId: r.tenant_id,
+      tenantName: r.tenant_name,
+      province: r.province ?? null,
+      configured: r.status != null && r.status !== 'unconfigured',
+      status: r.status ?? 'unconfigured',
+      baseUrl: r.base_url ?? null,
+      lastTestedAt: r.last_tested ? new Date(r.last_tested).toISOString() : null,
+      lastSyncedAt: lastSynced ? lastSynced.toISOString() : null,
+      syncDaysAgo: lastSynced ? Math.floor((Date.now() - lastSynced.getTime()) / 86400000) : null,
+      agentCount30d: r.agent30,
+    }
+  })
 }
