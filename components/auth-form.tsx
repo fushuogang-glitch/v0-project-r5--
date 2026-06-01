@@ -126,6 +126,17 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
             </Link>
           </p>
         </Card>
+
+        <Card className="mt-4 p-4 bg-card/50">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-foreground">
+              关联 NOTA CoreControl™
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              全智能运营管理系统,可以直接关联 SaaS,实现企业级财务管理和运营协同。
+            </p>
+          </div>
+        </Card>
       </div>
     </main>
   )
