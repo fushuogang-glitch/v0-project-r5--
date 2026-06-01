@@ -167,6 +167,7 @@ export async function createAccount(input: {
   channel: string
   accountNo?: string
   holder?: string
+  maxLimit?: number | null
 }): Promise<CreateAccountResult> {
   const scope = await getScope()
   // 门店端只能为自己锁定的门店添加账户;集团端可为旗下任意主体添加
@@ -192,6 +193,8 @@ export async function createAccount(input: {
     channel: input.channel.trim(),
     accountNo: input.accountNo?.trim() || null,
     holder: input.holder?.trim() || null,
+    maxLimit:
+      input.maxLimit != null && input.maxLimit > 0 ? String(input.maxLimit) : null,
     status: 'active',
   })
 

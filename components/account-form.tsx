@@ -45,6 +45,7 @@ export function AccountForm({ entityId }: { entityId: number }) {
     channel: '银行卡',
     accountNo: '',
     holder: '',
+    maxLimit: '',
   })
 
   const update = (k: keyof typeof form, v: string) =>
@@ -58,12 +59,24 @@ export function AccountForm({ entityId }: { entityId: number }) {
   const submit = () => {
     setError(null)
     startTransition(async () => {
-      const res = await createAccount({ entityId, ...form })
+      const { maxLimit, ...rest } = form
+      const res = await createAccount({
+        entityId,
+        ...rest,
+        maxLimit: maxLimit.trim() ? Number(maxLimit) : null,
+      })
       if (!res.ok) {
         setError(res.error)
         return
       }
-      setForm({ name: '', accountType: 'bank', channel: '银行卡', accountNo: '', holder: '' })
+      setForm({
+        name: '',
+        accountType: 'bank',
+        channel: '银行卡',
+        accountNo: '',
+        holder: '',
+        maxLimit: '',
+      })
       setOpen(false)
       router.refresh()
     })
@@ -135,6 +148,22 @@ export function AccountForm({ entityId }: { entityId: number }) {
               value={form.holder}
               onChange={(e) => update('holder', e.target.value)}
             />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="acc-limit">最高收款额度(选填)</Label>
+            <Input
+              id="acc-limit"
+              type="number"
+              min={0}
+              step={1000}
+              inputMode="decimal"
+              placeholder="如:500000,留空表示不限额"
+              value={form.maxLimit}
+              onChange={(e) => update('maxLimit', e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              累计收款达到该额度后,账户将自动显示「已满额」提示。
+            </p>
           </div>
           {error && (
             <p className="text-sm text-destructive" role="alert">
