@@ -156,20 +156,21 @@
   --sidebar-ring: oklch(0.78 0.13 82);
 }
 
-/* 赵公明财神:全屏平铺纹样,暗暗铺满整屏(浮于内容之上,不拦截交互) */
-/* tiled wealth watermark */
+/* 赵公明财神:仅在右上角显示一张图(不拦截交互) */
 [data-theme='wealth'] body::after {
   content: '';
   position: fixed;
-  inset: 0;
-  z-index: 9990;
+  top: 16px;
+  right: 16px;
+  width: 160px;
+  height: 200px;
+  z-index: 40;
   pointer-events: none;
   background-image: url('/themes/zhaogongming.jpg');
-  background-repeat: repeat;
-  background-position: center;
-  background-size: 300px auto;
-  opacity: 0.13;
-  mix-blend-mode: screen;
+  background-repeat: no-repeat;
+  background-position: top right;
+  background-size: contain;
+  opacity: 0.9;
 }
 
 .dark {
