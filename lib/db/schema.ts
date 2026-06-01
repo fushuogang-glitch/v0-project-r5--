@@ -122,6 +122,7 @@ export const transactions = pgTable('transactions', {
   invoiceKind: text('invoiceKind').notNull().default('none'), // none | special 专票 | general 普票 | receipt 收据
   invoiceNo: text('invoiceNo'), // 发票号码
   invoiceCode: text('invoiceCode'), // 发票代码
+  contractId: integer('contractId'), // 关联合同(对公进账三流合一勾稽,可空)
   summary: text('summary'), // 摘要
   source: text('source').notNull().default('manual'), // manual 手工 | pos | bank | invoice | agent
   status: text('status').notNull().default('posted'), // posted 已记账 | draft 草稿
@@ -353,6 +354,58 @@ export const platformAlerts = pgTable('platform_alerts', {
 })
 
 export type PlatformAlert = typeof platformAlerts.$inferSelect
+
+// --- 合同管理:登记收集 + 在线签署 + 与对公进账勾稽(三流合一) ----------
+// 合同主表:每份对公业务合同一行,可挂多笔进账流水(transactions.contractId)
+export const contracts = pgTable('contracts', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 数据归属(集团 owner)
+  entityId: integer('entityId').notNull(), // 签约我方主体
+  contractNo: text('contractNo').notNull(), // 合同编号(集团内唯一)
+  title: text('title').notNull(), // 合同名称
+  counterparty: text('counterparty').notNull(), // 对方单位/客户名称
+  counterpartyContact: text('counterpartyContact'), // 对方联系人
+  counterpartyPhone: text('counterpartyPhone'), // 对方联系电话
+  category: text('category').notNull().default('service'), // sales 销售 | service 服务 | purchase 采购 | lease 租赁 | labor 劳务 | other 其他
+  direction: text('direction').notNull().default('income'), // income 收入类(挂进账) | expense 支出类(挂付款)
+  amount: numeric('amount', { precision: 14, scale: 2 }).notNull().default('0'), // 合同总金额(含税)
+  signDate: date('signDate'), // 签订日期
+  startDate: date('startDate'), // 履行开始
+  endDate: date('endDate'), // 履行结束
+  status: text('status').notNull().default('draft'), // draft 草稿 | pending 待签署 | active 履行中 | completed 已完成 | void 作废
+  summary: text('summary'), // 合同摘要/备注
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+// 合同附件:扫描件/PDF,以 base64 dataURL 直接入库(未接对象存储时的方案)
+export const contractAttachments = pgTable('contract_attachments', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(),
+  contractId: integer('contractId').notNull(),
+  fileName: text('fileName').notNull(),
+  mimeType: text('mimeType').notNull(),
+  fileSize: integer('fileSize').notNull().default(0), // 字节
+  dataUrl: text('dataUrl').notNull(), // data:...;base64,...
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+// 合同签署记录:应用内自有签署(手写签名 + 时间戳 + 合同哈希留痕)
+export const contractSignatures = pgTable('contract_signatures', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(),
+  contractId: integer('contractId').notNull(),
+  party: text('party').notNull().default('partyB'), // partyA 甲方(我方) | partyB 乙方(对方)
+  signerName: text('signerName').notNull(), // 签署人姓名
+  signatureData: text('signatureData').notNull(), // 手写签名图 dataURL(PNG)
+  contractHash: text('contractHash'), // 签署时合同关键信息哈希(防篡改留痕)
+  signedAt: timestamp('signedAt').notNull().defaultNow(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+export type Contract = typeof contracts.$inferSelect
+export type ContractAttachment = typeof contractAttachments.$inferSelect
+export type ContractSignature = typeof contractSignatures.$inferSelect
 
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect

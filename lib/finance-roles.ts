@@ -16,19 +16,19 @@ export const FINANCE_ROLES: FinanceRoleDef[] = [
     value: 'cashier',
     label: '出纳',
     duty: '负责现金/银行收付、收款账户管理与银行对账,经手不记账。',
-    allow: ['/accounts', '/reports', '/audit'],
+    allow: ['/accounts', '/contracts', '/reports', '/audit'],
   },
   {
     value: 'accountant',
     label: '会计',
     duty: '负责日常记账、报表编制、工资与凭证处理,记账不管钱。',
-    allow: ['/reports', '/accounts', '/org', '/audit'],
+    allow: ['/reports', '/accounts', '/contracts', '/org', '/audit'],
   },
   {
     value: 'auditor',
     label: '审计',
     duty: '独立复核账务、监督收支与对账差异,处理月度审计发现。',
-    allow: ['/audit', '/reports', '/accounts', '/equity', '/tax-alerts'],
+    allow: ['/audit', '/reports', '/accounts', '/contracts', '/equity', '/tax-alerts'],
   },
   {
     value: 'tax',

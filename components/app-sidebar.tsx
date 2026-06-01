@@ -14,6 +14,7 @@ import {
   Network,
   Settings,
   ClipboardCheck,
+  FileSignature,
   LogOut,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
@@ -47,6 +48,7 @@ const groupNav: NavItem[] = [
   { title: '集团驾驶舱', href: '/', icon: LayoutDashboard },
   { title: '主体管理', href: '/entities', icon: Building2 },
   { title: '收款账户', href: '/accounts', icon: Wallet },
+  { title: '合同管理', href: '/contracts', icon: FileSignature },
   { title: '财务报表', href: '/reports', icon: BarChart3 },
   { title: '股权管理', href: '/equity', icon: PieChart },
   { title: '人力架构', href: '/org', icon: Network },
@@ -65,6 +67,7 @@ function storeNav(entityId: number | null): NavItem[] {
       icon: Store,
     },
     { title: '收款账户', href: '/accounts', icon: Wallet },
+    { title: '合同管理', href: '/contracts', icon: FileSignature },
     { title: '财务报表', href: '/reports', icon: BarChart3 },
     { title: '股权分红', href: '/equity', icon: PieChart },
     { title: '人力架构', href: '/org', icon: Network },
