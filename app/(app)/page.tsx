@@ -8,6 +8,7 @@ import {
   getTaxAlerts,
 } from '@/app/actions/finance'
 import { getScope } from '@/lib/scope'
+import { getGroupDisplayName } from '@/app/actions/org-profile'
 import { PageHeader } from '@/components/page-header'
 import { KpiCard } from '@/components/kpi-card'
 import { TrendChart } from '@/components/charts/trend-chart'
@@ -24,14 +25,16 @@ import { Badge } from '@/components/ui/badge'
 import { formatCompactCurrency, formatPercent } from '@/lib/format'
 
 export default async function DashboardPage() {
-  const [scope, summary, trend, entities, revByCat, alerts] = await Promise.all([
-    getScope(),
-    getGroupSummary(),
-    getMonthlyTrend(),
-    getEntityPerformance(),
-    getRevenueByCategory(),
-    getTaxAlerts(),
-  ])
+  const [scope, summary, trend, entities, revByCat, alerts, groupName] =
+    await Promise.all([
+      getScope(),
+      getGroupSummary(),
+      getMonthlyTrend(),
+      getEntityPerformance(),
+      getRevenueByCategory(),
+      getTaxAlerts(),
+      getGroupDisplayName(),
+    ])
 
   const topEntities = entities.slice(0, 5)
   const topAlerts = alerts.slice(0, 4)
@@ -39,6 +42,8 @@ export default async function DashboardPage() {
   // 是否聚焦在单个门店(门店端账号,或集团端切换到了某主体视图)
   const focused = scope.role === 'store' || scope.entityId != null
   const focusName = focused ? (entities[0]?.name ?? '当前门店') : null
+  // 集团总览标题:已登记品牌则显示「品牌名 · 集团驾驶舱」
+  const groupTitle = groupName ? `${groupName} · 集团驾驶舱` : '集团驾驶舱'
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6 lg:p-8">
