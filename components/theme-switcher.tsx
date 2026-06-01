@@ -54,12 +54,12 @@ const THEMES: ThemeOption[] = [
   },
   {
     value: 'wealth',
-    label: '招财金',
-    hint: '财神临门 · 暗纹',
+    label: '赵公明财神',
+    hint: '黑虎玄坛 · 暗金',
     swatch: {
-      primary: 'oklch(0.5 0.16 32)',
-      bg: 'oklch(0.97 0.014 50)',
-      accent: 'oklch(0.85 0.09 75)',
+      primary: 'oklch(0.78 0.13 82)',
+      bg: 'oklch(0.17 0.012 60)',
+      accent: 'oklch(0.34 0.05 70)',
     },
   },
 ]

@@ -156,21 +156,21 @@
   --sidebar-ring: oklch(0.78 0.13 82);
 }
 
-/* 赵公明财神:黑虎玄坛元帅在暗色背景中隐隐透出(固定居中,不拦截交互) */
-[data-theme='wealth'] body::before {
+/* 赵公明财神:黑虎玄坛元帅以金色光晕浮于最上层,隐隐透出
+   (screen 混合让图中黑底消失,只留金色线条;不拦截交互) */
+[data-theme='wealth'] body::after {
   content: '';
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: 9990;
   pointer-events: none;
-  background-image:
-    radial-gradient(ellipse at center 44%, oklch(0.26 0.04 72 / 0.55), transparent 60%),
-    url('/themes/caishen.png');
-  background-repeat: no-repeat, no-repeat;
-  background-position: center center, center 44%;
-  background-size: cover, min(700px, 82vmin) auto;
-  opacity: 0.55;
+  background-image: url('/themes/caishen.png');
+  background-repeat: no-repeat;
+  background-position: center 46%;
+  background-size: min(760px, 86vmin) auto;
+  opacity: 0.8;
   mix-blend-mode: screen;
+  filter: brightness(1.5) saturate(1.25);
 }
 
 .dark {
