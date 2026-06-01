@@ -3,17 +3,27 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+
+const STATS = [
+  { value: '200+', label: '服务品牌' },
+  { value: '1000+', label: '覆盖门店' },
+  { value: '50,000+', label: '日均处理' },
+  { value: '92%', label: 'AI决策精准度', accent: true },
+]
 
 export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [remember, setRemember] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -26,7 +36,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
 
     const { error } = isSignUp
       ? await authClient.signUp.email({ email, password, name })
-      : await authClient.signIn.email({ email, password })
+      : await authClient.signIn.email({ email, password, rememberMe: remember })
 
     setLoading(false)
 
@@ -40,32 +50,84 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   }
 
   return (
-    <main className="min-h-svh bg-muted/40 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground font-semibold">
-            N
-          </div>
-          <div>
-            <p className="text-xs font-medium text-primary">NOTA CoreControl™</p>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              让每一个品牌超进化
-            </h1>
-            <p className="text-xs text-muted-foreground">美业连锁化智能财务管理系统</p>
-          </div>
+    <main className="grid min-h-svh lg:grid-cols-2">
+      {/* 左侧:深色品牌展示区 */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-neutral-950 px-10 py-12 text-neutral-100 lg:flex xl:px-16">
+        {/* 品牌 */}
+        <div>
+          <h1 className="text-3xl font-light tracking-wide">诺塔智控</h1>
+          <p className="mt-1 text-sm font-light tracking-[0.25em] text-neutral-500">
+            NOTA CORECONTROL™
+          </p>
+          <p className="mt-3 text-sm text-neutral-400">新美业 · 全智能运营管理系统</p>
         </div>
 
-        <Card className="p-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              {isSignUp ? '创建账户' : '欢迎回来'}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {isSignUp ? '注册一个新账户以开始使用' : '登录您的账户以继续'}
+        {/* 主标语 + 数据 */}
+        <div className="space-y-12">
+          <div className="flex items-start gap-3">
+            <span className="mt-1.5 h-7 w-1 rounded-full bg-violet-500" aria-hidden />
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">新美业智控领跑者</h2>
+              <p className="mt-2 text-sm text-neutral-500">用 AI 让美业达到极限</p>
+            </div>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-10">
+            {STATS.map((s) => (
+              <div key={s.label}>
+                <dt className="text-4xl font-bold tracking-tight">
+                  {s.accent ? (
+                    <>
+                      {s.value.replace('%', '')}
+                      <span className="text-violet-400"> %</span>
+                    </>
+                  ) : (
+                    s.value
+                  )}
+                </dt>
+                <dd className="mt-1 text-sm text-neutral-500">{s.label}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        {/* 底部 */}
+        <div className="space-y-5">
+          <div className="h-px w-full bg-neutral-800" />
+          <p className="text-sm text-neutral-400">
+            武汉一二一 · 5店全线接入 · 客户复购率
+            <span className="font-semibold text-violet-400"> 10倍</span>
+          </p>
+          <p className="text-xs text-neutral-600">© 2026 诺塔智控 · NOTA CoreControl™</p>
+        </div>
+      </aside>
+
+      {/* 右侧:登录表单 */}
+      <section className="flex items-center justify-center bg-background px-6 py-12">
+        <div className="w-full max-w-sm">
+          {/* 移动端品牌头 */}
+          <div className="mb-8 lg:hidden">
+            <h1 className="text-2xl font-light tracking-wide text-foreground">诺塔智控</h1>
+            <p className="mt-1 text-xs tracking-[0.2em] text-muted-foreground">
+              NOTA CORECONTROL™
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="mb-8">
+            <p className="text-sm text-muted-foreground">
+              {isSignUp ? '加入我们' : '欢迎回来'}
+            </p>
+            <h2 className="mt-1 text-3xl font-semibold tracking-tight text-foreground text-balance">
+              {isSignUp ? '创建您的账户' : '登录您的账户'}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {isSignUp
+                ? '注册以接入 NOTA CoreControl™ 运营管理'
+                : '登录您的 NOTA CoreControl™ 帐户'}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {isSignUp && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="name">姓名</Label>
@@ -76,11 +138,13 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
                   required
                   autoComplete="name"
                   placeholder="请输入您的姓名"
+                  className="h-12"
                 />
               </div>
             )}
+
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email">邮箱</Label>
+              <Label htmlFor="email">用户名 / 邮箱</Label>
               <Input
                 id="email"
                 type="email"
@@ -89,21 +153,52 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
                 required
                 autoComplete="email"
                 placeholder="name@example.com"
+                className="h-12"
               />
             </div>
+
             <div className="flex flex-col gap-2">
               <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                placeholder="至少 8 位字符"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                  placeholder="至少 8 位字符"
+                  className="h-12 pr-11"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
+
+            {!isSignUp && (
+              <div className="flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                  <Checkbox
+                    checked={remember}
+                    onCheckedChange={(v) => setRemember(v === true)}
+                  />
+                  记住我
+                </label>
+                <Link
+                  href="/sign-in"
+                  className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  忘记密码?
+                </Link>
+              </div>
+            )}
 
             {error && (
               <p className="text-sm text-destructive" role="alert">
@@ -111,33 +206,22 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
               </p>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full">
+            <Button type="submit" disabled={loading} className="h-12 w-full text-base">
               {loading ? '请稍候...' : isSignUp ? '创建账户' : '登录'}
             </Button>
           </form>
 
-          <p className="text-sm text-muted-foreground text-center mt-6">
-            {isSignUp ? '已经有账户了? ' : '还没有账户? '}
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            {isSignUp ? '已经有账户了? ' : '首次使用? '}
             <Link
               href={isSignUp ? '/sign-in' : '/sign-up'}
-              className="text-foreground font-medium underline-offset-4 hover:underline"
+              className="font-medium text-foreground underline-offset-4 hover:underline"
             >
-              {isSignUp ? '去登录' : '去注册'}
+              {isSignUp ? '去登录' : '联系您的管理员开通账号'}
             </Link>
           </p>
-        </Card>
-
-        <Card className="mt-4 p-4 bg-card/50">
-          <div className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold text-foreground">
-              关联 NOTA CoreControl™
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              全智能运营管理系统,可以直接关联 SaaS,实现企业级财务管理和运营协同。
-            </p>
-          </div>
-        </Card>
-      </div>
+        </div>
+      </section>
     </main>
   )
 }
