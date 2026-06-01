@@ -41,7 +41,7 @@ export default function RootLayout({
         <ThemeProvider
           attribute="data-theme"
           defaultTheme="coffee"
-          themes={['coffee', 'ocean', 'forest', 'wealth']}
+          themes={['coffee', 'ocean', 'forest']}
           enableSystem={false}
           disableTransitionOnChange={false}
         >
