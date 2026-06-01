@@ -129,9 +129,10 @@ export const accounts = pgTable('accounts', {
   channel: text('channel').notNull(), // 与流水 channel 对应,用于汇总收款额
   accountNo: text('accountNo'), // 账号/卡号(脱敏)
   holder: text('holder'), // 开户名/持有人
+  maxLimit: numeric('maxLimit', { precision: 14, scale: 2 }), // 最高收款额度(NULL=不限额),累计收款达到后提示满额
   status: text('status').notNull().default('active'), // active | disabled
   createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
+  })
 
 // 三层股权:银股(实股出资)/ 身股(岗位人力股)/ 发展股(带教激励股)
 // level=entity 与单店关联;level=group 为集团层,基于全部门店合并净利润分红
