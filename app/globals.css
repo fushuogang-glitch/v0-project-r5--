@@ -156,21 +156,20 @@
   --sidebar-ring: oklch(0.78 0.13 82);
 }
 
-/* 赵公明财神:黑虎玄坛元帅以金色光晕浮于最上层,隐隐透出
-   (screen 混合让图中黑底消失,只留金色线条;不拦截交互) */
+/* 赵公明财神:全屏平铺纹样,暗暗铺满整屏(浮于内容之上,不拦截交互) */
+/* tiled wealth watermark */
 [data-theme='wealth'] body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 9990;
   pointer-events: none;
-  background-image: url('/themes/caishen.png');
-  background-repeat: no-repeat;
-  background-position: center 46%;
-  background-size: min(760px, 86vmin) auto;
-  opacity: 0.8;
+  background-image: url('/themes/zhaogongming.jpg');
+  background-repeat: repeat;
+  background-position: center;
+  background-size: 300px auto;
+  opacity: 0.13;
   mix-blend-mode: screen;
-  filter: brightness(1.5) saturate(1.25);
 }
 
 .dark {
