@@ -9,7 +9,7 @@ const GEO_URL = '/geo/china-provinces.json'
 
 // 热力色阶(琥珀色系,与中控台主题一致):值越高越亮
 function heatColor(value: number, max: number): string {
-  if (value <= 0) return '#1f1f23' // neutral-900 近似:无客户
+  if (value <= 0) return '#33333a' // 无客户:可见的中性陆地色
   const t = Math.min(1, value / Math.max(1, max))
   // 从深棕到亮琥珀插值
   const stops = ['#3a2f12', '#6b521a', '#a87d1f', '#d99a2b', '#f5b73d']
@@ -66,11 +66,13 @@ export function ChinaMap({ stats }: { stats: ProvinceStat[] }) {
         </div>
       </div>
 
-      <div className="relative">
+      <div className="relative w-full" style={{ aspectRatio: '4 / 3' }}>
         <ComposableMap
           projection="geoMercator"
-          projectionConfig={{ scale: 460, center: [104, 37.5] }}
-          style={{ width: '100%', height: 'auto' }}
+          projectionConfig={{ scale: 560, center: [104, 36] }}
+          width={640}
+          height={480}
+          style={{ width: '100%', height: '100%' }}
         >
           <Geographies geography={GEO_URL}>
             {({ geographies }) =>
@@ -97,13 +99,13 @@ export function ChinaMap({ stats }: { stats: ProvinceStat[] }) {
                       default: {
                         fill: heatColor(value, max),
                         stroke: '#0a0a0a',
-                        strokeWidth: 0.4,
+                        strokeWidth: 0.6,
                         outline: 'none',
                       },
                       hover: {
-                        fill: value > 0 ? '#fbbf24' : '#2a2a2e',
+                        fill: value > 0 ? '#fbbf24' : '#52525b',
                         stroke: '#0a0a0a',
-                        strokeWidth: 0.5,
+                        strokeWidth: 0.8,
                         outline: 'none',
                         cursor: value > 0 ? 'pointer' : 'default',
                       },
