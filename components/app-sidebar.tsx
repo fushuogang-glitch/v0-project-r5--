@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   ShieldAlert,
+  ShieldCheck,
   FileText,
   Wallet,
   Store,
@@ -49,6 +50,7 @@ const groupNav: NavItem[] = [
   { title: '人力架构', href: '/org', icon: Network },
   { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
   { title: '税务申报', href: '/tax-filing', icon: FileText },
+  { title: '合规提醒', href: '/compliance', icon: ShieldCheck },
   { title: '设置', href: '/settings', icon: Settings },
 ]
 
@@ -66,6 +68,7 @@ function storeNav(entityId: number | null): NavItem[] {
     { title: '人力架构', href: '/org', icon: Network },
     { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
     { title: '税务申报', href: '/tax-filing', icon: FileText },
+    { title: '合规提醒', href: '/compliance', icon: ShieldCheck },
   ]
 }
 
