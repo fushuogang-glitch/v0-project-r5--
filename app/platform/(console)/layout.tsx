@@ -33,7 +33,7 @@ export default async function PlatformConsoleLayout({
   }
 
   return (
-    <PlatformShell admin={admin} alertCount={alertCount}>
+    <PlatformShell admin={{ name: admin.name, loginId: admin.loginId }} alertCount={alertCount}>
       {children}
     </PlatformShell>
   )

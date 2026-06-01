@@ -494,14 +494,14 @@ export async function getProvinceStats(): Promise<ProvinceStat[]> {
       WHERE "snapshotDate" = (SELECT MAX("snapshotDate") FROM tenant_health)
       GROUP BY COALESCE(province, '未知')`,
   )
-  return rows.map((r) => ({
-    province: r.province,
-    tenants: r.tenants,
-    active: r.active,
-    risk: r.risk,
-    expiringSoon: r.expiring,
+  return rows.map((r: Record<string, unknown>) => ({
+    province: r.province as string,
+    tenants: r.tenants as number,
+    active: r.active as number,
+    risk: r.risk as number,
+    expiringSoon: r.expiring as number,
     revenue30d: Number(r.revenue),
-    avgHealthScore: r.avg_score,
+    avgHealthScore: r.avg_score as number,
   }))
 }
 
@@ -640,19 +640,23 @@ export async function getPlatformAlerts(
       ORDER BY CASE level WHEN 'risk' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, "updatedAt" DESC
       LIMIT 200`,
   )
-  return rows.map((r) => ({
-    id: r.id,
-    tenantId: r.tenantId,
-    tenantName: r.tenantName,
-    code: r.code,
-    dimension: r.dimension,
-    level: r.level,
-    title: r.title,
-    detail: r.detail,
-    status: r.status,
-    firstSeenAt: new Date(r.firstSeenAt).toISOString(),
-    updatedAt: new Date(r.updatedAt).toISOString(),
-  }))
+  return rows.map(mapAlertRow)
+}
+
+function mapAlertRow(r: Record<string, unknown>): PlatformAlertRow {
+  return {
+    id: r.id as number,
+    tenantId: r.tenantId as string,
+    tenantName: r.tenantName as string,
+    code: r.code as string,
+    dimension: r.dimension as string,
+    level: r.level as string,
+    title: r.title as string,
+    detail: (r.detail as string) ?? null,
+    status: r.status as string,
+    firstSeenAt: new Date(r.firstSeenAt as string).toISOString(),
+    updatedAt: new Date(r.updatedAt as string).toISOString(),
+  }
 }
 
 export async function resolvePlatformAlert(id: number): Promise<{ ok: boolean }> {
@@ -700,23 +704,11 @@ export async function getTenantHealthDetail(tenantId: string): Promise<TenantDet
     lastSyncAt: l?.lastSyncAt ? new Date(l.lastSyncAt).toISOString() : null,
     agentCount30d: l?.agentCount30d ?? 0,
     auditRan: l?.auditRan ?? false,
-    trend: trendRes.rows.reverse().map((r) => ({
+    trend: trendRes.rows.reverse().map((r: Record<string, unknown>) => ({
       date: String(r.date).slice(5, 10),
-      score: r.score,
+      score: r.score as number,
     })),
-    alerts: alertRes.rows.map((r) => ({
-      id: r.id,
-      tenantId: r.tenantId,
-      tenantName: r.tenantName,
-      code: r.code,
-      dimension: r.dimension,
-      level: r.level,
-      title: r.title,
-      detail: r.detail,
-      status: r.status,
-      firstSeenAt: new Date(r.firstSeenAt).toISOString(),
-      updatedAt: new Date(r.updatedAt).toISOString(),
-    })),
+    alerts: alertRes.rows.map(mapAlertRow),
   }
 }
 
@@ -756,19 +748,19 @@ export async function getPortMonitor(): Promise<PortMonitorRow[]> {
                last_synced ASC NULLS FIRST
       LIMIT 500`,
   )
-  return rows.map((r) => {
-    const lastSynced = r.last_synced ? new Date(r.last_synced) : null
+  return rows.map((r: Record<string, unknown>) => {
+    const lastSynced = r.last_synced ? new Date(r.last_synced as string) : null
     return {
-      tenantId: r.tenant_id,
-      tenantName: r.tenant_name,
-      province: r.province ?? null,
+      tenantId: r.tenant_id as string,
+      tenantName: r.tenant_name as string,
+      province: (r.province as string) ?? null,
       configured: r.status != null && r.status !== 'unconfigured',
-      status: r.status ?? 'unconfigured',
-      baseUrl: r.base_url ?? null,
-      lastTestedAt: r.last_tested ? new Date(r.last_tested).toISOString() : null,
+      status: (r.status as string) ?? 'unconfigured',
+      baseUrl: (r.base_url as string) ?? null,
+      lastTestedAt: r.last_tested ? new Date(r.last_tested as string).toISOString() : null,
       lastSyncedAt: lastSynced ? lastSynced.toISOString() : null,
       syncDaysAgo: lastSynced ? Math.floor((Date.now() - lastSynced.getTime()) / 86400000) : null,
-      agentCount30d: r.agent30,
+      agentCount30d: r.agent30 as number,
     }
   })
 }
