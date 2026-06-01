@@ -1,7 +1,13 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { entities, transactions, saasConfig, saasEntityMap } from '@/lib/db/schema'
+import {
+  entities,
+  transactions,
+  saasConfig,
+  saasEntityMap,
+  orgProfile,
+} from '@/lib/db/schema'
 import { getScope } from '@/lib/scope'
 import { getTaxProfile, calcTax } from '@/lib/tax-policy'
 import { encryptSecret, decryptSecret, maskSecret } from '@/lib/crypto'
@@ -27,6 +33,7 @@ export type SaasEntityMapRow = {
 
 export type SaasSyncReport = {
   at: string
+  trigger?: 'manual' | 'auto' | 'repair'
   byType: { topUps: number; consumes: number; dailyRevenue: number; payroll: number; purchases: number }
   added: number
   skipped: number
@@ -234,19 +241,37 @@ export async function syncNow(): Promise<
 > {
   const scope = await getScope()
   if (scope.role !== 'group') return { ok: false, error: '仅集团管理员可同步' }
+  const report = await runSyncForOwner(scope.ownerId, 'manual')
+  revalidatePath('/settings')
+  revalidatePath('/')
+  revalidatePath('/reports')
+  revalidatePath('/tax-alerts')
+  return { ok: true, report }
+}
 
+/**
+ * 双架构同步核心:对某集团执行一次全量拉取 → 入库。
+ * trigger 标识触发来源(manual 手动 / auto 自动补 / agent Agent回填后校验)。
+ * pullStore 内部已实现「真实接口失败自动降级 mock」,即一条通道异常时仍能产出数据。
+ */
+async function runSyncForOwner(
+  ownerId: string,
+  trigger: 'manual' | 'auto' | 'repair',
+): Promise<SaasSyncReport> {
   const ents = await db
     .select()
     .from(entities)
-    .where(eq(entities.userId, scope.ownerId))
+    .where(eq(entities.userId, ownerId))
 
   const report: SaasSyncReport = {
     at: new Date().toISOString(),
+    trigger,
     byType: { topUps: 0, consumes: 0, dailyRevenue: 0, payroll: 0, purchases: 0 },
     added: 0,
     skipped: 0,
     storeResults: [],
   }
+  const scope = { ownerId }
 
   for (const e of ents) {
     const storeCode = await resolveStoreCode(scope.ownerId, e.id, e.code)
@@ -360,14 +385,178 @@ export async function syncNow(): Promise<
     })
   }
 
-  await db
-    .update(saasConfig)
-    .set({ lastSyncedAt: new Date(), lastSyncReport: report })
-    .where(eq(saasConfig.userId, scope.ownerId))
+  // 确保有一行 saas_config 记录承载同步状态(自动通道下用户可能未手填配置)
+  const [cfgRow] = await db
+    .select({ id: saasConfig.id })
+    .from(saasConfig)
+    .where(eq(saasConfig.userId, ownerId))
+    .limit(1)
+  if (cfgRow) {
+    await db
+      .update(saasConfig)
+      .set({ lastSyncedAt: new Date(), lastSyncReport: report })
+      .where(eq(saasConfig.userId, ownerId))
+  } else {
+    await db.insert(saasConfig).values({
+      userId: ownerId,
+      lastSyncedAt: new Date(),
+      lastSyncReport: report,
+      status: 'connected',
+    })
+  }
 
-  revalidatePath('/settings')
-  revalidatePath('/')
-  revalidatePath('/reports')
-  revalidatePath('/tax-alerts')
-  return { ok: true, report }
+  return report
+}
+
+// ---------------------------------------------------------------------------
+// 双架构自动化同步:进入系统时自动补同步
+// ---------------------------------------------------------------------------
+// 架构说明(互为备份):
+//   通道 A(Agent 推送):公司侧财务 Agent 凭 NOTA API 密钥主动回填流水(实时)。
+//   通道 B(自动拉取):本系统按间隔主动从 SaaS 拉取并入库(兜底)。
+// 当某条通道异常,另一条仍保证数据不断流;两者写入同一去重键,天然幂等不会重复。
+//
+// autoSyncIfDue:在布局渲染时被调用,若开启自动同步且距上次超过设定间隔,
+// 则静默执行一次拉取补齐。失败不抛出,避免影响页面渲染。
+
+export type AutoSyncResult =
+  | { ran: true; report: SaasSyncReport }
+  | { ran: false; reason: string }
+
+export async function autoSyncIfDue(): Promise<AutoSyncResult> {
+  let scope
+  try {
+    scope = await getScope()
+  } catch {
+    return { ran: false, reason: 'no-session' }
+  }
+  if (scope.role !== 'group') return { ran: false, reason: 'not-group' }
+
+  const [profile] = await db
+    .select()
+    .from(orgProfile)
+    .where(eq(orgProfile.userId, scope.ownerId))
+    .limit(1)
+
+  if (!profile?.autoSyncEnabled) return { ran: false, reason: 'disabled' }
+
+  const intervalMs = (profile.autoSyncIntervalMin || 360) * 60 * 1000
+  const last = profile.lastAutoSyncAt ? profile.lastAutoSyncAt.getTime() : 0
+  if (Date.now() - last < intervalMs) return { ran: false, reason: 'not-due' }
+
+  try {
+    const report = await runSyncForOwner(scope.ownerId, 'auto')
+    await db
+      .update(orgProfile)
+      .set({ lastAutoSyncAt: new Date() })
+      .where(eq(orgProfile.userId, scope.ownerId))
+    return { ran: true, report }
+  } catch (e) {
+    console.log('[v0] 自动补同步失败:', (e as Error).message)
+    return { ran: false, reason: 'error' }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 双通道健康状态:供设置页健康面板展示
+// ---------------------------------------------------------------------------
+export type ChannelHealth = {
+  agent: {
+    configured: boolean // 是否已生成 NOTA API 密钥
+    lastInboundAt: string | null // 最近一条 Agent 回填流水时间
+    recentCount: number // 近 30 天 Agent 回填条数
+    status: 'healthy' | 'idle' | 'down'
+  }
+  auto: {
+    enabled: boolean
+    configured: boolean // 是否已配置 SaaS 接口或环境变量
+    lastSyncedAt: string | null
+    intervalMin: number
+    primary: boolean
+    status: 'healthy' | 'idle' | 'down'
+  }
+  // 互备结论
+  redundancy: 'dual' | 'single' | 'none'
+}
+
+export async function getChannelHealth(): Promise<ChannelHealth> {
+  const scope = await getScope()
+  if (scope.role !== 'group') throw new Error('仅集团管理员可访问')
+
+  const { user: userTable } = await import('@/lib/db/schema')
+
+  const [u] = await db
+    .select({ key: userTable.agentApiKey })
+    .from(userTable)
+    .where(eq(userTable.id, scope.ownerId))
+    .limit(1)
+
+  const [profile] = await db
+    .select()
+    .from(orgProfile)
+    .where(eq(orgProfile.userId, scope.ownerId))
+    .limit(1)
+
+  const [cfg] = await db
+    .select()
+    .from(saasConfig)
+    .where(eq(saasConfig.userId, scope.ownerId))
+    .limit(1)
+
+  // Agent 通道:统计近 30 天 source='agent' 的回填流水
+  const since = new Date()
+  since.setDate(since.getDate() - 30)
+  const agentRows = await db
+    .select({ createdAt: transactions.createdAt })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, scope.ownerId),
+        eq(transactions.source, 'agent'),
+      ),
+    )
+  const recentAgent = agentRows.filter((r) => r.createdAt && r.createdAt >= since)
+  const lastInbound = agentRows.reduce<Date | null>((max, r) => {
+    if (r.createdAt && (!max || r.createdAt > max)) return r.createdAt
+    return max
+  }, null)
+
+  const agentConfigured = !!u?.key
+  const agentStatus: 'healthy' | 'idle' | 'down' = !agentConfigured
+    ? 'down'
+    : recentAgent.length > 0
+      ? 'healthy'
+      : 'idle'
+
+  const autoConfigured = !!(
+    (cfg?.baseUrl && cfg?.apiKeyEnc) ||
+    (process.env.SAAS_API_BASE_URL && process.env.SAAS_API_KEY)
+  )
+  const autoEnabled = !!profile?.autoSyncEnabled
+  const autoStatus: 'healthy' | 'idle' | 'down' = !autoEnabled
+    ? 'down'
+    : cfg?.lastSyncedAt
+      ? 'healthy'
+      : 'idle'
+
+  const healthyChannels =
+    (agentStatus !== 'down' ? 1 : 0) + (autoStatus !== 'down' ? 1 : 0)
+
+  return {
+    agent: {
+      configured: agentConfigured,
+      lastInboundAt: lastInbound ? lastInbound.toISOString() : null,
+      recentCount: recentAgent.length,
+      status: agentStatus,
+    },
+    auto: {
+      enabled: autoEnabled,
+      configured: autoConfigured,
+      lastSyncedAt: cfg?.lastSyncedAt ? cfg.lastSyncedAt.toISOString() : null,
+      intervalMin: profile?.autoSyncIntervalMin || 360,
+      primary: profile?.primaryChannel === 'auto',
+      status: autoStatus,
+    },
+    redundancy: healthyChannels >= 2 ? 'dual' : healthyChannels === 1 ? 'single' : 'none',
+  }
 }

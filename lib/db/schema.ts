@@ -150,7 +150,7 @@ export const shareholders = pgTable('shareholders', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
-// 员工主数据:贯穿组织架构、工资、股权��中心实体
+// 员工主数据:贯穿组织架构、工资���股权��中心实体
 // level=group 集团层(高管,entityId 空)| level=entity 门店层;managerId 指向上级员工构成组织树
 export const employees = pgTable('employees', {
   id: serial('id').primaryKey(),
@@ -246,6 +246,36 @@ export const complianceNodes = pgTable('compliance_nodes', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
+
+// --- V2 升级:租户品牌信息 + 安全设置 + 自动同步配置(集团级,一行一集团) ---
+// 区别于产品品牌(诺塔智控 FMS,固定),这里登记的是客户自己的集团/品牌信息,
+// 如「双美集团」,用于驾驶舱标题、报表抬头等。同表存放敏感操作的安全 PIN(密文)
+// 与双架构同步的自动化设置。
+export const orgProfile = pgTable('org_profile', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull().unique(), // 集团归属(唯一)
+  brandName: text('brandName'), // 品牌名(如「双美」)
+  groupName: text('groupName'), // 集团全称(如「双美集团」)
+  shortName: text('shortName'), // 简称
+  slogan: text('slogan'), // 品牌标语
+  legalEntity: text('legalEntity'), // 品牌运营主体公司
+  industry: text('industry'), // 所属行业
+  logoUrl: text('logoUrl'), // 品牌 Logo
+  contactName: text('contactName'), // 联系人
+  contactPhone: text('contactPhone'),
+  contactEmail: text('contactEmail'),
+  headquarters: text('headquarters'), // 总部地址
+  website: text('website'),
+  securityPinEnc: text('securityPinEnc'), // 安全 PIN(加密存储),用于解锁敏感模块
+  autoSyncEnabled: boolean('autoSyncEnabled').notNull().default(false), // 是否启用进入系统自动补同步
+  autoSyncIntervalMin: integer('autoSyncIntervalMin').notNull().default(360), // 自动补同步最小间隔(分钟)
+  lastAutoSyncAt: timestamp('lastAutoSyncAt'), // 上次自动补同步时间
+  primaryChannel: text('primaryChannel').notNull().default('agent'), // 主同步通道:agent Agent推送 | auto 自动拉取
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export type OrgProfile = typeof orgProfile.$inferSelect
 
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect

@@ -43,7 +43,7 @@ export default async function DashboardPage() {
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6 lg:p-8">
       <PageHeader
-        title={focused ? `${focusName} · 经营驾驶舱` : '集团驾驶舱'}
+        title={focused ? `${focusName} · 经营驾驶舱` : groupTitle}
         description={
           focused
             ? '本门店经营财务与税务风险概览'

@@ -96,14 +96,14 @@ export function AppSidebar({
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2.5 px-2 py-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-semibold">
-            美
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold">
+            FMS
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold text-sidebar-foreground">
-              诺塔智 · 财务大脑
+              诺塔智控 FMS
             </span>
-            <span className="text-xs text-muted-foreground">美业多主体财税管理</span>
+            <span className="text-xs text-muted-foreground">美业智能财税系统</span>
           </div>
         </div>
       </SidebarHeader>

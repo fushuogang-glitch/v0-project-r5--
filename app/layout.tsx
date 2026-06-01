@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: '诺塔智 · 美业财务智能 ERP',
-  description: '面向美业连锁集团的多主体财税管理系统,涵盖集团驾驶舱、统一流水、财务报表与税务额度临界点预警。',
+  title: '诺塔智控 FMS · 美业智能财税系统',
+  description: '诺塔智控 FMS 美业智能财税系统:面向美业连锁集团的多主体财税管理平台,涵盖集团驾驶舱、统一流水、财务报表、税务申报与合规临界点预警。',
   generator: 'v0.app',
   icons: {
     icon: [
