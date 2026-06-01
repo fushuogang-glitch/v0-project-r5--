@@ -44,13 +44,14 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground font-semibold">
-            美
+            N
           </div>
           <div>
+            <p className="text-xs font-medium text-primary">NOTA CoreControl™</p>
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              美业财务 ERP
+              让每一个品牌超进化
             </h1>
-            <p className="text-xs text-muted-foreground">连锁门店财务管理系统</p>
+            <p className="text-xs text-muted-foreground">美业连锁化智能财务管理系统</p>
           </div>
         </div>
 
