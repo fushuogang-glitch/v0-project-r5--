@@ -7,8 +7,9 @@ import { getTaxProfile, calcTax } from '@/lib/tax-policy'
 import { getScope, type Scope } from '@/lib/scope'
 import {
   getMembershipReconciliation,
+  resolveStoreCode,
   type MembershipReconciliation,
-} from '@/lib/membership-saas'
+} from '@/lib/saas-integration'
 import {
   buildVouchers,
   computeStatements,
@@ -999,7 +1000,8 @@ export async function getMembershipData(entityId: number): Promise<MembershipDat
   const scope = await getScope()
   const e = await assertEntityAccess(scope, entityId)
 
-  const recon = await getMembershipReconciliation(e.code)
+  const storeCode = await resolveStoreCode(scope.ownerId, e.id, e.code)
+  const recon = await getMembershipReconciliation(scope.ownerId, storeCode)
 
   // 财务侧:该主体储值渠道的收入合计
   const [book] = await db

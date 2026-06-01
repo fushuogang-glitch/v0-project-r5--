@@ -7,6 +7,7 @@ import {
   numeric,
   date,
   integer,
+  jsonb,
 } from 'drizzle-orm/pg-core'
 
 // --- Better Auth required tables -------------------------------------------
@@ -149,7 +150,7 @@ export const shareholders = pgTable('shareholders', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
-// 员工主数据:贯穿组织架构、工资、股权的中心实体
+// 员工主数据:贯穿组织架构、工资、股权��中心实体
 // level=group 集团层(高管,entityId 空)| level=entity 门店层;managerId 指向上级员工构成组织树
 export const employees = pgTable('employees', {
   id: serial('id').primaryKey(),
@@ -204,6 +205,48 @@ export const salaries = pgTable('salaries', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
+// --- V2 升级:SaaS 对接配置(集团级,一行一集团) --------------------------
+// 存储 BA-CRM SaaS 接口地址 + API Key(密文)+ 上次同步状态。
+export const saasConfig = pgTable('saas_config', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 集团归属(唯一)
+  baseUrl: text('baseUrl'), // SaaS 接口根地址
+  apiKeyEnc: text('apiKeyEnc'), // 加密存储的 SaaS API Key
+  status: text('status').notNull().default('unconfigured'), // unconfigured | connected | error
+  lastTestedAt: timestamp('lastTestedAt'), // 上次测试连接时间
+  lastSyncedAt: timestamp('lastSyncedAt'), // 上次同步时间
+  lastSyncReport: jsonb('lastSyncReport'), // 上次同步报告(各类数据条数等)
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+// --- V2 升级:主体 ↔ SaaS storeCode 映射(覆盖默认 entity.code) ----------
+export const saasEntityMap = pgTable('saas_entity_map', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(),
+  entityId: integer('entityId').notNull(),
+  storeCode: text('storeCode').notNull(), // 对应 SaaS 侧门店编码
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+// --- V2 升级:税务合规节点(按主体 + 期间自动生成的合规提醒) --------------
+export const complianceNodes = pgTable('compliance_nodes', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 集团归属
+  entityId: integer('entityId'), // 关联主体(集团级提醒可空)
+  nodeType: text('nodeType').notNull(), // vat_filing | cit_prepay | cit_settle | vat_exempt | small_profit | general_taxpayer | license_expiry | stamp_tax 等
+  title: text('title').notNull(), // 提醒标题
+  detail: text('detail'), // 说明
+  period: text('period'), // 所属期间(2026Q1 / 2026-05 / 2026 等)
+  dueDate: date('dueDate'), // 法定截止日 / 临界触发日
+  remindAt: date('remindAt'), // 提前提醒日
+  level: text('level').notNull().default('info'), // info | warning | danger
+  status: text('status').notNull().default('pending'), // pending 待办 | filed 已申报 | overdue 逾期 | dismissed 已忽略
+  meta: jsonb('meta'), // 附加数据(临界占比/金额等)
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
 export type Account = typeof accounts.$inferSelect
@@ -212,3 +255,6 @@ export type Employee = typeof employees.$inferSelect
 export type Department = typeof departments.$inferSelect
 export type Position = typeof positions.$inferSelect
 export type Salary = typeof salaries.$inferSelect
+export type SaasConfig = typeof saasConfig.$inferSelect
+export type SaasEntityMap = typeof saasEntityMap.$inferSelect
+export type ComplianceNode = typeof complianceNodes.$inferSelect

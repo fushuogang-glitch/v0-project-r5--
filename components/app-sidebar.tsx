@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   ShieldAlert,
+  FileText,
   Wallet,
   Store,
   PieChart,
@@ -47,6 +48,7 @@ const groupNav: NavItem[] = [
   { title: '股权管理', href: '/equity', icon: PieChart },
   { title: '人力架构', href: '/org', icon: Network },
   { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
+  { title: '税务申报', href: '/tax-filing', icon: FileText },
   { title: '设置', href: '/settings', icon: Settings },
 ]
 
@@ -63,6 +65,7 @@ function storeNav(entityId: number | null): NavItem[] {
     { title: '股权分红', href: '/equity', icon: PieChart },
     { title: '人力架构', href: '/org', icon: Network },
     { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
+    { title: '税务申报', href: '/tax-filing', icon: FileText },
   ]
 }
 

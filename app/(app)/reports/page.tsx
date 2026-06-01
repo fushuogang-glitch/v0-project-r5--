@@ -4,6 +4,8 @@ import {
   getExpenseByCategory,
   getGroupSummary,
 } from '@/app/actions/finance'
+import { getScope, getViewableEntities } from '@/lib/scope'
+import { ReportExportToolbar } from '@/components/report-export-toolbar'
 import { PageHeader } from '@/components/page-header'
 import { RevenueExpenseBar } from '@/components/charts/revenue-expense-bar'
 import { CategoryDonut } from '@/components/charts/category-donut'
@@ -31,14 +33,19 @@ import {
 } from '@/lib/format'
 
 export default async function ReportsPage() {
-  const [trend, revByCat, expByCat, summary] = await Promise.all([
+  const scope = await getScope()
+  const [trend, revByCat, expByCat, summary, viewable] = await Promise.all([
     getMonthlyTrend(),
     getRevenueByCategory(),
     getExpenseByCategory(),
     getGroupSummary(),
+    getViewableEntities(scope),
   ])
 
   const reversed = [...trend].reverse()
+  const exportEntities = viewable.map((e) => ({ id: e.id, name: e.name, code: e.code }))
+  // 集团管理员且处于集团视图时可在「集团合并 / 单店」间选择导出范围
+  const canChoose = scope.role === 'group' && scope.entityId == null
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6 lg:p-8">
@@ -46,6 +53,8 @@ export default async function ReportsPage() {
         title="财务报表"
         description="营收、成本与利润的多维度分析"
       />
+
+      <ReportExportToolbar entities={exportEntities} canChoose={canChoose} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
