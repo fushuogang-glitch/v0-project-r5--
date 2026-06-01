@@ -38,6 +38,7 @@ export type AuditDimension =
   | 'tax'
   | 'payroll'
   | 'account'
+  | 'contract'
 
 type Draft = {
   entityId: number
@@ -84,6 +85,10 @@ async function computeFindings(ownerId: string, period: string): Promise<Draft[]
       invoiced: transactions.invoiced,
       source: transactions.source,
       category: transactions.category,
+      channel: transactions.channel,
+      contractId: transactions.contractId,
+      bizDate: transactions.bizDate,
+      summary: transactions.summary,
     })
     .from(transactions)
     .where(
@@ -412,6 +417,41 @@ async function computeFindings(ownerId: string, period: string): Promise<Draft[]
     }
   }
 
+  // --- 维度6:对公银行进账未挂合同(三流合一勾稽) ---
+  // 对公进账(银行/对公渠道的收入)应能溯源到合同。未挂合同的逐主体汇总提示补录。
+  const BANK_KEYWORDS = ['银行', '对公', '公户', '转账']
+  const noContractByEntity = new Map<
+    number,
+    { count: number; amount: number; samples: string[] }
+  >()
+  for (const t of txns) {
+    if (t.bizType !== 'income') continue
+    const ch = t.channel ?? ''
+    const isPublic = BANK_KEYWORDS.some((k) => ch.includes(k))
+    if (!isPublic) continue
+    if (t.contractId != null) continue // 已挂合同,合规
+    const cur =
+      noContractByEntity.get(t.entityId) ?? { count: 0, amount: 0, samples: [] }
+    cur.count += 1
+    cur.amount += Number(t.amount)
+    if (cur.samples.length < 3) {
+      cur.samples.push(`${t.bizDate} ${t.summary ?? t.category} ${fmt(Number(t.amount))}`)
+    }
+    noContractByEntity.set(t.entityId, cur)
+  }
+  for (const [eid, info] of noContractByEntity) {
+    const name = nameMap.get(eid) ?? `主体${eid}`
+    drafts.push({
+      entityId: eid,
+      dimension: 'contract',
+      code: 'pub_income_no_contract',
+      level: 'warn',
+      title: `${name}:对公进账未挂合同`,
+      detail: `本期有 ${info.count} 笔对公进账(合计 ${fmt(info.amount)})未关联合同,建议补录合同以满足"合同流=资金流=发票流"三流合一。示例:${info.samples.join(';')}。`,
+      metric: info.count,
+    })
+  }
+
   void groupIncome
   void groupManual
   void recvMap
@@ -455,7 +495,7 @@ async function persist(ownerId: string, period: string, drafts: Draft[]) {
   }
 }
 
-// 手动重跑��月(或指定期间)审计
+// 手动重跑���月(或指定期间)审计
 export async function runMonthlyAudit(period?: string): Promise<{ ok: boolean; count: number }> {
   const scope = await getScope()
   const p = period ?? periodNow()
@@ -513,6 +553,7 @@ const DIMENSION_LABELS: Record<AuditDimension, string> = {
   tax: '税务临界',
   payroll: '工资分红',
   account: '收款账户',
+  contract: '合同勾稽',
 }
 
 export async function getAuditReport(period?: string): Promise<AuditReport> {

@@ -23,6 +23,7 @@ import {
   getQuarterlyQuotas,
 } from '@/app/actions/finance'
 import { getStoreAccounts } from '@/app/actions/org'
+import { getContractOptions } from '@/app/actions/contracts'
 import { getScope } from '@/lib/scope'
 import { PageHeader } from '@/components/page-header'
 import { KpiCard } from '@/components/kpi-card'
@@ -77,7 +78,7 @@ export default async function EntityDetailPage({
   }
 
   const scope = await getScope()
-  const [accounts, txs, alerts, storeUsers, taxPolicy, membership, vouchers, statements, quotas] =
+  const [accounts, txs, alerts, storeUsers, taxPolicy, membership, vouchers, statements, quotas, contractOptions] =
     await Promise.all([
       getEntityAccounts(entityId),
       getEntityTransactions(entityId, 100),
@@ -88,6 +89,7 @@ export default async function EntityDetailPage({
       getEntityVouchers(entityId),
       getFinancialStatements(entityId),
       getQuarterlyQuotas(entityId),
+      getContractOptions(entityId),
     ])
   const quota = quotas[0]
 
@@ -262,6 +264,7 @@ export default async function EntityDetailPage({
                 <TransactionForm
                   entityId={entity.id}
                   expenseOnly={scope.role === 'store'}
+                  contractOptions={contractOptions}
                   profile={{
                     vatRate: taxPolicy.profile.vatRate,
                     surtaxRate: taxPolicy.profile.surtaxRate,

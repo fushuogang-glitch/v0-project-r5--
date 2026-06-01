@@ -37,14 +37,18 @@ type Profile = {
   vatLabel: string
 }
 
+type ContractOption = { id: number; contractNo: string; title: string; counterparty: string }
+
 export function TransactionForm({
   entityId,
   profile,
   expenseOnly = false,
+  contractOptions = [],
 }: {
   entityId: number
   profile: Profile
   expenseOnly?: boolean
+  contractOptions?: ContractOption[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -61,8 +65,14 @@ export function TransactionForm({
     invoiceMedium: 'none',
     invoiceKind: 'none',
     invoiceNo: '',
+    contractId: 'none',
     summary: '',
   })
+
+  // 对公进账(银行/对公/转账渠道的收入)建议关联合同,满足三流合一
+  const isPublicIncome =
+    form.bizType === 'income' &&
+    ['银行', '对公', '公户', '转账'].some((k) => form.channel.includes(k))
 
   function update<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -92,6 +102,7 @@ export function TransactionForm({
         invoiceMedium: form.invoiceMedium,
         invoiceKind: form.invoiceKind,
         invoiceNo: form.invoiceNo,
+        contractId: form.contractId !== 'none' ? Number(form.contractId) : null,
         summary: form.summary,
       })
       if (!res.ok) {
@@ -99,7 +110,7 @@ export function TransactionForm({
         return
       }
       setOpen(false)
-      setForm((f) => ({ ...f, amount: '', invoiceNo: '', summary: '' }))
+      setForm((f) => ({ ...f, amount: '', invoiceNo: '', contractId: 'none', summary: '' }))
       router.refresh()
     })
   }
@@ -249,6 +260,37 @@ export function TransactionForm({
                 value={form.invoiceNo}
                 onChange={(e) => update('invoiceNo', e.target.value)}
               />
+            </div>
+          )}
+
+          {form.bizType === 'income' && (
+            <div className="grid gap-2">
+              <Label>
+                关联合同
+                {isPublicIncome && (
+                  <span className="ml-2 text-xs font-normal text-amber-600">
+                    对公进账建议挂合同(三流合一)
+                  </span>
+                )}
+              </Label>
+              <Select value={form.contractId} onValueChange={(v) => update('contractId', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择合同(选填)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">不关联</SelectItem>
+                  {contractOptions.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.contractNo} · {c.title}({c.counterparty})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {contractOptions.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  暂无可选合同,可先在「合同管理」登记后再关联。
+                </p>
+              )}
             </div>
           )}
 

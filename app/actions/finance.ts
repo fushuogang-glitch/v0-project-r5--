@@ -927,6 +927,7 @@ export type CreateTxInput = {
   invoiceKind?: string
   invoiceNo?: string
   invoiceCode?: string
+  contractId?: number | null
   summary?: string
 }
 
@@ -974,6 +975,7 @@ export async function createTransaction(
       invoiceKind: input.invoiceKind ?? 'none',
       invoiceNo: input.invoiceNo || null,
       invoiceCode: input.invoiceCode || null,
+      contractId: input.contractId ?? null,
       summary: input.summary || null,
       source: 'manual',
       status: 'posted',
