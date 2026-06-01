@@ -53,7 +53,7 @@ export function financeRoleLabel(role?: string | null): string {
 export function financeRoleCanAccess(role: string | null | undefined, path: string): boolean {
   const def = financeRoleDef(role)
   if (!def) return true // 非财务子账号(集团/门店端)由其它逻辑控制
-  // 仪表盘与设置中的个人区对所有角色开放
-  if (path === '/' || path === '/settings') return true
+  // 仅集团驾驶舱对所有财务角色开放;设置为管理员专属,不放行
+  if (path === '/') return true
   return def.allow.some((p) => path === p || path.startsWith(p + '/'))
 }

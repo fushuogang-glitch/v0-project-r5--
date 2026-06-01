@@ -13,9 +13,11 @@ import {
   PieChart,
   Network,
   Settings,
+  ClipboardCheck,
   LogOut,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
+import { financeRoleCanAccess } from '@/lib/finance-roles'
 import {
   Sidebar,
   SidebarContent,
@@ -49,6 +51,7 @@ const groupNav: NavItem[] = [
   { title: '人力架构', href: '/org', icon: Network },
   { title: '税务预警', href: '/tax-alerts', icon: ShieldAlert },
   { title: '税务申报', href: '/tax-filing', icon: FileText },
+  { title: '财务审计', href: '/audit', icon: ClipboardCheck },
   { title: '设置', href: '/settings', icon: Settings },
 ]
 
@@ -76,15 +79,25 @@ export function AppSidebar({
   role = 'group',
   storeEntityId = null,
   badges = {},
+  financeRole = null,
+  isAdmin = true,
 }: {
   user: { name: string; email: string }
   role?: 'group' | 'store'
   storeEntityId?: number | null
   badges?: Record<string, Badge>
+  financeRole?: string | null
+  isAdmin?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const navItems = role === 'store' ? storeNav(storeEntityId) : groupNav
+  const baseNav = role === 'store' ? storeNav(storeEntityId) : groupNav
+  // 财务子账号:按岗位职责过滤可见栏目;非管理员隐藏「设置」
+  const navItems = baseNav.filter((item) => {
+    if (item.href === '/settings' && !isAdmin) return false
+    if (financeRole) return financeRoleCanAccess(financeRole, item.href)
+    return true
+  })
 
   const handleSignOut = async () => {
     await authClient.signOut()

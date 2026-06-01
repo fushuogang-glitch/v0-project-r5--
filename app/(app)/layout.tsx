@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { ensureSeedData } from '@/app/actions/finance'
 import { autoSyncIfDue } from '@/app/actions/saas'
 import { generateComplianceNodes, getComplianceBadges } from '@/app/actions/compliance'
+import { autoRunAuditIfDue } from '@/app/actions/audit'
 import { getScope, getViewableEntities } from '@/lib/scope'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ViewSwitcher } from '@/components/view-switcher'
@@ -31,6 +32,9 @@ export default async function AppLayout({
   await generateComplianceNodes().catch(() => {})
   const { byRoute } = await getComplianceBadges()
 
+  // 进入系统时若本月尚未审计则自动跑一次月度审计(幂等,失败不影响渲染)
+  await autoRunAuditIfDue().catch(() => {})
+
   return (
     <SidebarProvider>
       <AppSidebar
@@ -38,6 +42,8 @@ export default async function AppLayout({
         role={scope.role}
         storeEntityId={scope.role === 'store' ? scope.entityId : null}
         badges={byRoute}
+        financeRole={scope.financeRole}
+        isAdmin={scope.isAdmin}
       />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/80 px-4 py-2.5 backdrop-blur">
