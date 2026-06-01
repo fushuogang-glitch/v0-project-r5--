@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
-import { LayoutDashboard, Building2, BellRing, LogOut, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Building2, BellRing, LogOut, ShieldCheck, MapPinned, Plug } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type NavItem = { title: string; href: string; icon: React.ElementType; badge?: number }
@@ -22,8 +22,10 @@ export function PlatformShell({
 
   const nav: NavItem[] = [
     { title: '运营中控台', href: '/platform', icon: LayoutDashboard },
-    { title: '租户实例', href: '/platform/tenants', icon: Building2 },
-    { title: '实例告警', href: '/platform/alerts', icon: BellRing, badge: alertCount },
+    { title: '地区分布', href: '/platform/regions', icon: MapPinned },
+    { title: '客户明细', href: '/platform/tenants', icon: Building2 },
+    { title: '端口监控', href: '/platform/ports', icon: Plug },
+    { title: '使用预警', href: '/platform/alerts', icon: BellRing, badge: alertCount },
   ]
 
   const isActive = (href: string) =>
