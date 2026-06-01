@@ -69,7 +69,7 @@ export function ChinaMap({ stats }: { stats: ProvinceStat[] }) {
       <div className="relative w-full" style={{ aspectRatio: '4 / 3' }}>
         <ComposableMap
           projection="geoMercator"
-          projectionConfig={{ scale: 560, center: [104, 36] }}
+          projectionConfig={{ scale: 430, center: [104, 37.5] }}
           width={640}
           height={480}
           style={{ width: '100%', height: '100%' }}
