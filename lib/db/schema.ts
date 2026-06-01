@@ -303,6 +303,49 @@ export const auditFindings = pgTable('audit_findings', {
 
 export type AuditFinding = typeof auditFindings.$inferSelect
 
+// --- 平台运营中台:租户(软件实例)每日健康快照 -----------------------------
+// 跨全租户预聚合,按 (tenantId, snapshotDate) 幂等;中控台读最新快照,避免实时全表扫描
+export const tenantHealth = pgTable('tenant_health', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenantId').notNull(), // 租户主账号 userId(= 一个软件实例)
+  snapshotDate: date('snapshotDate').notNull(),
+  tenantName: text('tenantName'),
+  entityCount: integer('entityCount').notNull().default(0), // 主体/门店数
+  txnCount30d: integer('txnCount30d').notNull().default(0), // 近 30 天流水笔数
+  lastTxnAt: timestamp('lastTxnAt'), // 最近一条流水时间(数据心跳)
+  lastLoginAt: timestamp('lastLoginAt'), // 最近登录(活跃)
+  lastSyncAt: timestamp('lastSyncAt'), // 最近同步
+  agentCount30d: integer('agentCount30d').notNull().default(0), // 近 30 天 Agent 回填条数
+  auditRan: boolean('auditRan').notNull().default(false), // 本月是否已审计
+  revenue30d: numeric('revenue30d', { precision: 16, scale: 2 }).notNull().default('0'), // 近 30 天收入(聚合金额)
+  healthScore: integer('healthScore').notNull().default(100), // 综合健康分 0-100
+  status: text('status').notNull().default('ok'), // ok 正常 | risk 风险 | down 异常
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+export type TenantHealth = typeof tenantHealth.$inferSelect
+
+// --- 平台运营中台:实例告警 -------------------------------------------------
+// 幂等:同一租户同一 code 仅一条活动告警;notified 预留通知接口对接
+export const platformAlerts = pgTable('platform_alerts', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenantId').notNull(),
+  tenantName: text('tenantName'),
+  code: text('code').notNull(), // 告警编码(幂等键)
+  dimension: text('dimension').notNull(), // offline 离线 | data 数据断流 | sync 同步 | audit 审计 | churn 流失
+  level: text('level').notNull().default('warn'), // info 提示 | warn 警告 | risk 严重
+  title: text('title').notNull(),
+  detail: text('detail'),
+  metric: numeric('metric', { precision: 16, scale: 2 }),
+  status: text('status').notNull().default('open'), // open 待处理 | resolved 已处理
+  notified: boolean('notified').notNull().default(false), // 是否已推送通知(预留)
+  firstSeenAt: timestamp('firstSeenAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+  resolvedAt: timestamp('resolvedAt'),
+})
+
+export type PlatformAlert = typeof platformAlerts.$inferSelect
+
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
 export type Account = typeof accounts.$inferSelect

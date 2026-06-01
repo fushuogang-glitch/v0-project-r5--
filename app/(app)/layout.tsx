@@ -19,6 +19,9 @@ export default async function AppLayout({
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect('/sign-in')
 
+  // 平台运营方超管不进入客户系统,跳转到独立的运营中台
+  if ((session.user as { role?: string }).role === 'platform') redirect('/platform')
+
   // 首次进入自动生成演示数据(集团管理员;门店端会跳过)
   await ensureSeedData()
 
