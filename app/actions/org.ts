@@ -5,6 +5,7 @@ import { db, pool } from '@/lib/db'
 import { user as userTable, entities, accounts } from '@/lib/db/schema'
 import { getScope, VIEW_COOKIE } from '@/lib/scope'
 import { generateAgentKey } from '@/lib/agent-auth'
+import { isValidUsername, generateSyntheticEmail } from '@/lib/account-id'
 import { and, eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -29,11 +30,11 @@ export type CreateStoreAccountResult =
   | { ok: true }
   | { ok: false; error: string }
 
-/** 集团管理员为某个主体创建门店端登录账号 */
+/** 集团管理员为某个主体创建门店端登录账号(account = 手机号 / 用户名) */
 export async function createStoreAccount(input: {
   entityId: number
   name: string
-  email: string
+  account: string
   password: string
 }): Promise<CreateStoreAccountResult> {
   const scope = await getScope()
@@ -49,20 +50,31 @@ export async function createStoreAccount(input: {
     .limit(1)
   if (!entity) return { ok: false, error: '主体不存在或无权操作' }
 
+  const account = input.account.trim()
+  if (!isValidUsername(account)) {
+    return { ok: false, error: '登录账号需为有效的手机号或用户名(2-30 位)' }
+  }
   if (input.password.length < 8) {
     return { ok: false, error: '密码至少 8 位' }
   }
 
+  // 用户名以隐藏合成邮箱承载底层 email 要求,用户实际用 account 登录
+  const syntheticEmail = generateSyntheticEmail()
   try {
-    // 通过 Better Auth 创建带密码哈希的用户。
     // 不转发当前请求 headers,避免 autoSignIn 顶替掉管理员自己的会话。
     await auth.api.signUpEmail({
-      body: { name: input.name, email: input.email, password: input.password },
+      body: {
+        name: input.name,
+        email: syntheticEmail,
+        password: input.password,
+        username: account,
+        displayUsername: account,
+      },
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : '创建失败'
-    if (msg.toLowerCase().includes('exist')) {
-      return { ok: false, error: '该邮箱已被注册' }
+    if (/exist|taken|unique/i.test(msg)) {
+      return { ok: false, error: '该手机号 / 用户名已被注册' }
     }
     return { ok: false, error: msg }
   }
@@ -70,7 +82,7 @@ export async function createStoreAccount(input: {
   // 将新账号标记为门店端,并绑定到主体 + 归属当前集团数据
   await pool.query(
     'UPDATE "user" SET "role" = $1, "ownerId" = $2, "entityId" = $3 WHERE email = $4',
-    ['store', scope.ownerId, input.entityId, input.email],
+    ['store', scope.ownerId, input.entityId, syntheticEmail],
   )
 
   revalidatePath('/entities')
@@ -256,14 +268,22 @@ export async function updateEntityInfo(input: {
 export async function getStoreAccounts(entityId: number) {
   const scope = await getScope()
   if (scope.role !== 'group') return []
-  return db
+  const rows = await db
     .select({
       id: userTable.id,
       name: userTable.name,
       email: userTable.email,
+      displayUsername: userTable.displayUsername,
+      username: userTable.username,
     })
     .from(userTable)
     .where(and(eq(userTable.ownerId, scope.ownerId), eq(userTable.entityId, entityId)))
+  // 对外展示登录账号:优先 displayUsername/username,无则回退邮箱(历史账号)
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    loginId: r.displayUsername || r.username || r.email,
+  }))
 }
 
 // ---------------------------------------------------------------------------

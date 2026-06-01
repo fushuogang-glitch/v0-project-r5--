@@ -1,5 +1,7 @@
 import { betterAuth } from 'better-auth'
+import { username as usernamePlugin } from 'better-auth/plugins'
 import { pool } from '@/lib/db'
+import { isValidUsername, USERNAME_MIN, USERNAME_MAX } from '@/lib/account-id'
 
 export const auth = betterAuth({
   database: pool,
@@ -14,6 +16,14 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
   },
+  plugins: [
+    // 用户名 / 手机号登录:放宽校验以支持中文用户名;手机号(纯数字)天然满足
+    usernamePlugin({
+      minUsernameLength: USERNAME_MIN,
+      maxUsernameLength: USERNAME_MAX,
+      usernameValidator: (value) => isValidUsername(value),
+    }),
+  ],
   user: {
     additionalFields: {
       // 角色与数据范围。input:false 表示注册时不可由前端设置,只能服务端写入。

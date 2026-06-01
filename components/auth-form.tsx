@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
+import {
+  looksLikeEmail,
+  isValidUsername,
+  generateSyntheticEmail,
+  USERNAME_HINT,
+} from '@/lib/account-id'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,7 +26,7 @@ const STATS = [
 export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [account, setAccount] = useState('') // 手机号 / 用户名 / 邮箱
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
@@ -32,17 +38,42 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
 
-    const { error } = isSignUp
-      ? await authClient.signUp.email({ email, password, name })
-      : await authClient.signIn.email({ email, password, rememberMe: remember })
+    const value = account.trim()
 
-    setLoading(false)
-
-    if (error) {
-      setError(error.message ?? '操作失败,请重试')
-      return
+    if (isSignUp) {
+      // 注册:登录账号为手机号 / 用户名(不接受邮箱),系统自动生成隐藏合成邮箱
+      if (!isValidUsername(value)) {
+        setError('请输入有效的手机号或用户名(2-30 位,可用中英文 / 数字 / 下划线)')
+        return
+      }
+      setLoading(true)
+      const { error } = await authClient.signUp.email({
+        email: generateSyntheticEmail(),
+        password,
+        name,
+        username: value,
+        displayUsername: value,
+      } as Parameters<typeof authClient.signUp.email>[0])
+      setLoading(false)
+      if (error) {
+        const msg = error.message ?? ''
+        setError(
+          /exist|taken|unique/i.test(msg) ? '该手机号 / 用户名已被注册' : msg || '注册失败,请重试',
+        )
+        return
+      }
+    } else {
+      // 登录:含 @ 走邮箱(兼容历史账号),否则走用户名 / 手机号
+      setLoading(true)
+      const { error } = looksLikeEmail(value)
+        ? await authClient.signIn.email({ email: value, password, rememberMe: remember })
+        : await authClient.signIn.username({ username: value, password, rememberMe: remember })
+      setLoading(false)
+      if (error) {
+        setError(error.message ?? '账号或密码错误,请重试')
+        return
+      }
     }
 
     router.push('/')
@@ -144,17 +175,26 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
             )}
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email" className="text-xs">用户名 / 邮箱</Label>
+              <Label htmlFor="account" className="text-xs">
+                {isSignUp ? '登录账号(手机号 / 用户名)' : '手机号 / 用户名'}
+              </Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="account"
+                name="username"
+                type="text"
+                value={account}
+                onChange={(e) => setAccount(e.target.value)}
                 required
-                autoComplete="email"
-                placeholder="name@example.com"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder={isSignUp ? '如:13800138000 或 zhang_san' : '请输入手机号或用户名'}
                 className="h-9 text-sm"
               />
+              {isSignUp && (
+                <p className="text-[11px] leading-relaxed text-muted-foreground">{USERNAME_HINT}</p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

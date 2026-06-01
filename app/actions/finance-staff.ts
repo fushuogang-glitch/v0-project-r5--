@@ -4,22 +4,23 @@ import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { getScope } from '@/lib/scope'
 import { financeRoleDef, type FinanceRole } from '@/lib/finance-roles'
+import { isValidUsername, generateSyntheticEmail } from '@/lib/account-id'
 import { revalidatePath } from 'next/cache'
 
 export type FinanceStaff = {
   id: string
   name: string
-  email: string
+  loginId: string // 登录账号(手机号 / 用户名)
   financeRole: string
   createdAt: string
 }
 
 export type CreateFinanceStaffResult = { ok: true } | { ok: false; error: string }
 
-/** 集团管理员创建财务子账号(出纳/会计/审计/税务专员) */
+/** 集团管理员创建财务子账号(出纳/会计/审计/税务专员),account = 手机号 / 用户名 */
 export async function createFinanceStaff(input: {
   name: string
-  email: string
+  account: string
   password: string
   financeRole: FinanceRole
 }): Promise<CreateFinanceStaffResult> {
@@ -30,19 +31,30 @@ export async function createFinanceStaff(input: {
   if (!financeRoleDef(input.financeRole)) {
     return { ok: false, error: '无效的财务角色' }
   }
+  const account = input.account.trim()
+  if (!isValidUsername(account)) {
+    return { ok: false, error: '登录账号需为有效的手机号或用户名(2-30 位)' }
+  }
   if (input.password.length < 8) {
     return { ok: false, error: '密码至少 8 位' }
   }
 
+  const syntheticEmail = generateSyntheticEmail()
   try {
     // 不转发当前 headers,避免 autoSignIn 顶替掉管理员会话
     await auth.api.signUpEmail({
-      body: { name: input.name, email: input.email, password: input.password },
+      body: {
+        name: input.name,
+        email: syntheticEmail,
+        password: input.password,
+        username: account,
+        displayUsername: account,
+      },
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : '创建失败'
-    if (msg.toLowerCase().includes('exist')) {
-      return { ok: false, error: '该邮箱已被注册' }
+    if (/exist|taken|unique/i.test(msg)) {
+      return { ok: false, error: '该手机号 / 用户名已被注册' }
     }
     return { ok: false, error: msg }
   }
@@ -50,7 +62,7 @@ export async function createFinanceStaff(input: {
   // 标记为集团级财务子账号:可查看集团数据,但带 financeRole 受 RBAC 限制
   await pool.query(
     'UPDATE "user" SET "role" = $1, "ownerId" = $2, "entityId" = NULL, "financeRole" = $3 WHERE email = $4',
-    ['group', scope.ownerId, input.financeRole, input.email],
+    ['group', scope.ownerId, input.financeRole, syntheticEmail],
   )
 
   revalidatePath('/settings')
@@ -62,13 +74,13 @@ export async function listFinanceStaff(): Promise<FinanceStaff[]> {
   const scope = await getScope()
   if (!scope.isAdmin) return []
   const { rows } = await pool.query(
-    'SELECT id, name, email, "financeRole", "createdAt" FROM "user" WHERE "ownerId" = $1 AND "financeRole" IS NOT NULL ORDER BY "createdAt" DESC',
+    'SELECT id, name, email, "displayUsername", username, "financeRole", "createdAt" FROM "user" WHERE "ownerId" = $1 AND "financeRole" IS NOT NULL ORDER BY "createdAt" DESC',
     [scope.ownerId],
   )
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
-    email: r.email,
+    loginId: r.displayUsername || r.username || r.email,
     financeRole: r.financeRole,
     createdAt:
       r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),

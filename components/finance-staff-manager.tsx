@@ -45,7 +45,7 @@ export function FinanceStaffManager({ staff }: { staff: FinanceStaff[] }) {
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
-    email: '',
+    account: '',
     password: '',
     financeRole: 'cashier' as FinanceRole,
   })
@@ -56,8 +56,8 @@ export function FinanceStaffManager({ staff }: { staff: FinanceStaff[] }) {
 
   function submit() {
     setError(null)
-    if (!form.name.trim() || !form.email.trim()) {
-      setError('请填写姓名与邮箱')
+    if (!form.name.trim() || !form.account.trim()) {
+      setError('请填写姓名与登录账号')
       return
     }
     startTransition(async () => {
@@ -66,7 +66,7 @@ export function FinanceStaffManager({ staff }: { staff: FinanceStaff[] }) {
         setError(res.error)
         return
       }
-      setForm({ name: '', email: '', password: '', financeRole: 'cashier' })
+      setForm({ name: '', account: '', password: '', financeRole: 'cashier' })
       setOpen(false)
       router.refresh()
     })
@@ -139,13 +139,16 @@ export function FinanceStaffManager({ staff }: { staff: FinanceStaff[] }) {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="fs-email">登录邮箱</Label>
+                <Label htmlFor="fs-account">登录账号(手机号 / 用户名)</Label>
                 <Input
-                  id="fs-email"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => update('email', e.target.value)}
-                  placeholder="staff@company.com"
+                  id="fs-account"
+                  type="text"
+                  value={form.account}
+                  onChange={(e) => update('account', e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="如:13800138000 或 zhang_kuaiji"
                 />
               </div>
               <div className="grid gap-2">
@@ -184,7 +187,7 @@ export function FinanceStaffManager({ staff }: { staff: FinanceStaff[] }) {
               <TableRow>
                 <TableHead>姓名</TableHead>
                 <TableHead>岗位</TableHead>
-                <TableHead>登录邮箱</TableHead>
+                <TableHead>登录账号</TableHead>
                 <TableHead className="w-16 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -199,7 +202,7 @@ export function FinanceStaffManager({ staff }: { staff: FinanceStaff[] }) {
                         {def?.label ?? s.financeRole}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{s.email}</TableCell>
+                    <TableCell className="text-muted-foreground">{s.loginId}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"

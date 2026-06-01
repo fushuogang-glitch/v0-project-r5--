@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { UserPlus, Mail, KeyRound, User } from 'lucide-react'
+import { UserPlus, Smartphone, KeyRound, User } from 'lucide-react'
 import { createStoreAccount } from '@/app/actions/org'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 
-type StoreUser = { id: string; name: string; email: string }
+type StoreUser = { id: string; name: string; loginId: string }
 
 export function StoreAccountManager({
   entityId,
@@ -31,7 +31,7 @@ export function StoreAccountManager({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -40,13 +40,13 @@ export function StoreAccountManager({
     e.preventDefault()
     setError(null)
     startTransition(async () => {
-      const res = await createStoreAccount({ entityId, name, email, password })
+      const res = await createStoreAccount({ entityId, name, account, password })
       if (!res.ok) {
         setError(res.error)
         return
       }
       setName('')
-      setEmail('')
+      setAccount('')
       setPassword('')
       setOpen(false)
       router.refresh()
@@ -91,17 +91,20 @@ export function StoreAccountManager({
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="sa-email">登录邮箱</Label>
+                <Label htmlFor="sa-account">登录账号(手机号 / 用户名)</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Smartphone className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    id="sa-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="sa-account"
+                    type="text"
+                    value={account}
+                    onChange={(e) => setAccount(e.target.value)}
                     required
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     className="pl-9"
-                    placeholder="store@example.com"
+                    placeholder="如:13800138000 或 store_wuhan"
                   />
                 </div>
               </div>
@@ -142,7 +145,7 @@ export function StoreAccountManager({
             <li key={u.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="flex flex-col leading-tight">
                 <span className="text-sm font-medium text-foreground">{u.name}</span>
-                <span className="text-xs text-muted-foreground">{u.email}</span>
+                <span className="text-xs text-muted-foreground">{u.loginId}</span>
               </div>
               <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
                 门店端

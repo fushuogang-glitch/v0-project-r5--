@@ -19,6 +19,9 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('emailVerified').notNull().default(false),
   image: text('image'),
+  // 登录账号:手机号或自定义用户名(username 插件,小写归一化后唯一);displayUsername 保留原始大小写
+  username: text('username').unique(),
+  displayUsername: text('displayUsername'),
   // 角色与数据范围(多租户隔离)
   role: text('role').notNull().default('group'), // group 集团管理员 | store 门店端
   ownerId: text('ownerId'), // 所属集团的 userId(集团管理员=自身);用于数据归属
