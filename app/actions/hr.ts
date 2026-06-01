@@ -5,17 +5,7 @@ import { employees, entities, departments, positions } from '@/lib/db/schema'
 import { getScope } from '@/lib/scope'
 import { and, eq, asc } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-
-export type JobLevel =
-  | 'L1' | 'L2' | 'L3' | 'L4' | 'L5'
-  | 'L6' | 'L7' | 'L8' | 'L9' | 'L10'
-  | 'L11' | 'L12' | 'L13' | 'L14' | 'L15'
-
-export const JOB_LEVELS: JobLevel[] = [
-  'L1', 'L2', 'L3', 'L4', 'L5',
-  'L6', 'L7', 'L8', 'L9', 'L10',
-  'L11', 'L12', 'L13', 'L14', 'L15',
-]
+import type { JobLevel } from '@/lib/hr-constants'
 
 export type EmployeeRow = {
   id: number

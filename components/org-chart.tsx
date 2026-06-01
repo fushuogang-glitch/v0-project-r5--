@@ -40,12 +40,11 @@ import {
   setEntityDepartment,
   type OrgChart as OrgChartData,
   type OrgEntityNode,
-  JOB_LEVELS,
   type EmployeeRow,
-  type JobLevel,
   type DeptItem,
   type PositionItem,
 } from '@/app/actions/hr'
+import { JOB_LEVELS, type JobLevel } from '@/lib/hr-constants'
 
 // 职级 L1-L15:标签即编码本身;徽章按层级分色(L13+ 高层 / L9-12 中层 / L5-8 主管 / L1-4 员工)
 function jobLevelLabel(level: JobLevel) {
@@ -844,7 +843,7 @@ function AddEmployeeDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="emp-phone">手机号</Label>
+              <Label htmlFor="emp-phone">���机号</Label>
               <Input
                 id="emp-phone"
                 value={form.phone}
