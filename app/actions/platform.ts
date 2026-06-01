@@ -14,6 +14,8 @@ const DATA_RISK_DAYS = 7 // 超过无新流水=数据断流(严重)
 const DATA_WARN_DAYS = 3
 const SYNC_STALE_DAYS = 3 // 同步/Agent 双通道均停滞
 const AUDIT_GRACE_DAY = 5 // 每月 5 号后仍未审计才告警
+const TAX_OVERDUE_DAYS = 7 // 税务风险超过 N 天未处理即提醒平台方
+const EXPIRY_WARN_DAYS = 7 // 订阅剩余 ≤ N 天=即将到期
 const SCAN_THROTTLE_MS = 2 * 60 * 60 * 1000 // 自动扫描节流:2 小时
 
 function periodNow(): string {
@@ -43,6 +45,10 @@ type Agg = {
   agentCount30d: number
   revenue30d: number
   auditRan: boolean
+  province: string | null
+  plan: string | null
+  subscriptionEndsAt: Date | null
+  taxRiskOverdue: number
 }
 
 export async function runPlatformHealthScan(): Promise<{ tenants: number; alerts: number }> {
@@ -54,13 +60,17 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
   const period = periodNow()
   const snapshot = todayStr()
 
-  // 1) 租户主账号(= 软件实例):group 主账号、无财务岗位、无 ownerId
+  // 1) 租户主账号(= 软件实例):group 主账号、无财务岗位、自持(ownerId = 自身 id)
   const tenantsRes = await pool.query(
-    `SELECT id, name, COALESCE("displayUsername", username, email) AS login
+    `SELECT id, name, COALESCE("displayUsername", username, email) AS login,
+            province, plan, "subscriptionEndsAt"
        FROM "user"
-      WHERE role = 'group' AND "financeRole" IS NULL AND "ownerId" IS NULL`,
+      WHERE role = 'group' AND "financeRole" IS NULL AND "ownerId" = id`,
   )
-  const tenants = tenantsRes.rows as { id: string; name: string; login: string }[]
+  const tenants = tenantsRes.rows as {
+    id: string; name: string; login: string
+    province: string | null; plan: string | null; subscriptionEndsAt: Date | null
+  }[]
   if (tenants.length === 0) return { tenants: 0, alerts: 0 }
 
   const agg = new Map<string, Agg>()
@@ -76,6 +86,10 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
       agentCount30d: 0,
       revenue30d: 0,
       auditRan: false,
+      province: t.province,
+      plan: t.plan,
+      subscriptionEndsAt: t.subscriptionEndsAt,
+      taxRiskOverdue: 0,
     })
   }
 
@@ -132,6 +146,17 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
     [period],
   )
   for (const r of aud.rows) agg.get(r.id) && (agg.get(r.id)!.auditRan = true)
+
+  // 7b) 税务风险超 7 天未处理:tax 维度、非 pass、open 且 updatedAt 超期(按租户计数)
+  const taxRisk = await pool.query(
+    `SELECT "userId" AS id, COUNT(*)::int AS c
+       FROM audit_findings
+      WHERE dimension = 'tax' AND status = 'open' AND level <> 'pass'
+        AND "updatedAt" <= now() - ($1 || ' days')::interval
+      GROUP BY "userId"`,
+    [TAX_OVERDUE_DAYS],
+  )
+  for (const r of taxRisk.rows) agg.get(r.id) && (agg.get(r.id)!.taxRiskOverdue = r.c)
 
   // 8) 计算健康分 + 状态 + 告警,批量 upsert
   const dayOfMonth = new Date().getDate()
@@ -215,6 +240,39 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
       })
     }
 
+    // 税务风险超期未处理:跨客户主动提醒平台方
+    if (a.taxRiskOverdue > 0) {
+      score -= 15
+      activeAlerts.push({
+        tenantId: a.tenantId, tenantName: a.tenantName, code: 'tax_overdue',
+        dimension: 'tax', level: 'warn', title: '税务风险超期未处理',
+        detail: `有 ${a.taxRiskOverdue} 项税务风险超过 ${TAX_OVERDUE_DAYS} 天仍未处理,建议提醒客户`,
+        metric: a.taxRiskOverdue,
+      })
+    }
+
+    // 订阅到期 / 即将到期
+    const daysToExpiry = a.subscriptionEndsAt
+      ? Math.ceil((new Date(a.subscriptionEndsAt).getTime() - Date.now()) / 86400000)
+      : null
+    if (daysToExpiry != null) {
+      if (daysToExpiry < 0) {
+        score -= 20
+        activeAlerts.push({
+          tenantId: a.tenantId, tenantName: a.tenantName, code: 'expired',
+          dimension: 'billing', level: 'risk', title: '订阅已到期',
+          detail: `订阅已过期 ${-daysToExpiry} 天,功能可能受限`, metric: daysToExpiry,
+        })
+      } else if (daysToExpiry <= EXPIRY_WARN_DAYS) {
+        score -= 5
+        activeAlerts.push({
+          tenantId: a.tenantId, tenantName: a.tenantName, code: 'expiring',
+          dimension: 'billing', level: 'warn', title: '订阅即将到期',
+          detail: `订阅将在 ${daysToExpiry} 天后到期,建议跟进续费`, metric: daysToExpiry,
+        })
+      }
+    }
+
     score = Math.max(0, Math.min(100, score))
     const status = isNew ? 'ok' : score >= 80 ? 'ok' : score >= 50 ? 'risk' : 'down'
 
@@ -222,6 +280,7 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
       a.tenantId, snapshot, a.tenantName, a.entityCount, a.txnCount30d,
       a.lastTxnAt, a.lastLoginAt, a.lastSyncAt, a.agentCount30d, a.auditRan,
       a.revenue30d, score, status,
+      a.province, a.plan, daysToExpiry, a.taxRiskOverdue,
     ])
   }
 

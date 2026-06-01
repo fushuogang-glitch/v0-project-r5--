@@ -23,12 +23,16 @@ export const user = pgTable('user', {
   username: text('username').unique(),
   displayUsername: text('displayUsername'),
   // 角色与数据范围(多租户隔离)
-  role: text('role').notNull().default('group'), // group 集团管理员 | store 门店端
+  role: text('role').notNull().default('group'), // group 集团管理员 | store 门店端 | platform 平台运营超管
   ownerId: text('ownerId'), // 所属集团的 userId(集团管理员=自身);用于数据归属
   entityId: integer('entityId'), // 门店端账号锁定的主体 id
   agentApiKey: text('agentApiKey'), // 财务 Agent API 密钥(集团级,用于公司侧 Agent 抓取门店数据)
   // 财务岗位角色(仅财务子账号):cashier 出纳 | accountant 会计 | auditor 审计 | tax 税务专员;集团管理员/门店端为 null
   financeRole: text('financeRole'),
+  // 平台运营元数据(仅租户主账号有意义,供 SaaS 中台地图/订阅监控)
+  province: text('province'), // 客户所在省份(中文全称,匹配地图)
+  plan: text('plan').default('trial'), // 套餐:trial 试用 | basic 基础 | pro 专业 | flagship 旗舰
+  subscriptionEndsAt: timestamp('subscriptionEndsAt'), // 订阅到期日
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -147,7 +151,7 @@ export const shareholders = pgTable('shareholders', {
   level: text('level').notNull().default('entity'), // group 集团层 | entity 门店层
   entityId: integer('entityId'), // 关联门店/主体(集团层为空)
   employeeId: integer('employeeId'), // 绑定的架构员工(可选)
-  name: text('name').notNull(), // 持股人姓名
+  name: text('name').notNull(), // 持��人姓名
   shareType: text('shareType').notNull(), // bank 银股 | position 身股 | growth 发展股
   ratio: numeric('ratio', { precision: 5, scale: 2 }).notNull().default('0'), // 分红权比例(%)
   position: text('position'), // 岗位(店长/顾问/外部股东)
@@ -318,6 +322,10 @@ export const tenantHealth = pgTable('tenant_health', {
   agentCount30d: integer('agentCount30d').notNull().default(0), // 近 30 天 Agent 回填条数
   auditRan: boolean('auditRan').notNull().default(false), // 本月是否已审计
   revenue30d: numeric('revenue30d', { precision: 16, scale: 2 }).notNull().default('0'), // 近 30 天收入(聚合金额)
+  province: text('province'), // 客户省份(快照冗余,便于地图聚合)
+  plan: text('plan'), // 套餐
+  daysToExpiry: integer('daysToExpiry'), // 订阅剩余天数,负数=已过期,null=未设置
+  taxRiskOverdue: integer('taxRiskOverdue').notNull().default(0), // 税务风险超 7 天未处理数
   healthScore: integer('healthScore').notNull().default(100), // 综合健康分 0-100
   status: text('status').notNull().default('ok'), // ok 正常 | risk 风险 | down 异常
   createdAt: timestamp('createdAt').notNull().defaultNow(),
