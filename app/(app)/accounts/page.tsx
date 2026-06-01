@@ -1,6 +1,8 @@
 import { getAccounts } from '@/app/actions/finance'
+import { getBankReconciliation } from '@/app/actions/reconciliation'
 import { getScope } from '@/lib/scope'
 import { PageHeader } from '@/components/page-header'
+import { BankReconciliation } from '@/components/bank-reconciliation'
 import {
   Card,
   CardContent,
@@ -22,7 +24,11 @@ import { accountMeta } from '@/lib/account-meta'
 import { formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/format'
 
 export default async function AccountsPage() {
-  const [accounts, scope] = await Promise.all([getAccounts(), getScope()])
+  const [accounts, scope, reconciliation] = await Promise.all([
+    getAccounts(),
+    getScope(),
+    getBankReconciliation(),
+  ])
 
   const totalReceived = accounts.reduce((s, a) => s + a.received, 0)
 
@@ -123,6 +129,8 @@ export default async function AccountsPage() {
           })}
         </CardContent>
       </Card>
+
+      <BankReconciliation data={reconciliation} />
 
       {Array.from(groups.entries()).map(([entityId, g]) => {
         const subtotal = g.rows.reduce((s, a) => s + a.received, 0)
