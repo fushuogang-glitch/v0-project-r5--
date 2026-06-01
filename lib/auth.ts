@@ -20,6 +20,8 @@ export const auth = betterAuth({
       role: { type: 'string', required: false, defaultValue: 'group', input: false },
       ownerId: { type: 'string', required: false, input: false },
       entityId: { type: 'number', required: false, input: false },
+      // 财务岗位角色(出纳/会计/审计/税务专员),仅服务端写入
+      financeRole: { type: 'string', required: false, input: false },
     },
   },
   databaseHooks: {

@@ -16,6 +16,10 @@ export type Scope = {
   entityId: number | null
   /** 门店端锁定,无法切换视图 */
   locked: boolean
+  /** 财务岗位角色(出纳/会计/审计/税务专员);集团管理员与门店端为 null */
+  financeRole: string | null
+  /** 是否为"真正的集团管理员"(可执行建账号、密钥等管理操作) */
+  isAdmin: boolean
 }
 
 const VIEW_COOKIE = 'view_entity'
@@ -33,10 +37,12 @@ export async function getScope(): Promise<Scope> {
     role?: Role
     ownerId?: string | null
     entityId?: number | null
+    financeRole?: string | null
   }
 
   const role: Role = u.role === 'store' ? 'store' : 'group'
   const ownerId = u.ownerId || u.id
+  const financeRole = u.financeRole ?? null
 
   if (role === 'store') {
     return {
@@ -45,6 +51,8 @@ export async function getScope(): Promise<Scope> {
       role,
       entityId: u.entityId ?? null,
       locked: true,
+      financeRole,
+      isAdmin: false,
     }
   }
 
@@ -52,7 +60,16 @@ export async function getScope(): Promise<Scope> {
   const raw = store.get(VIEW_COOKIE)?.value
   const entityId = raw && raw !== 'group' ? Number(raw) : null
 
-  return { ownerId, selfId: u.id, role, entityId, locked: false }
+  // 真正的集团管理员 = group 角色且无财务岗位标记
+  return {
+    ownerId,
+    selfId: u.id,
+    role,
+    entityId,
+    locked: false,
+    financeRole,
+    isAdmin: financeRole == null,
+  }
 }
 
 /** 集团管理员可访问的主体下拉(用于顶栏切换器) */

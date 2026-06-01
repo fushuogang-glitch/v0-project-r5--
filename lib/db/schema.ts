@@ -24,6 +24,8 @@ export const user = pgTable('user', {
   ownerId: text('ownerId'), // 所属集团的 userId(集团管理员=自身);用于数据归属
   entityId: integer('entityId'), // 门店端账号锁定的主体 id
   agentApiKey: text('agentApiKey'), // 财务 Agent API 密钥(集团级,用于公司侧 Agent 抓取门店数据)
+  // 财务岗位角色(仅财务子账号):cashier 出纳 | accountant 会计 | auditor 审计 | tax 税务专员;集团管理员/门店端为 null
+  financeRole: text('financeRole'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -277,6 +279,26 @@ export const orgProfile = pgTable('org_profile', {
 })
 
 export type OrgProfile = typeof orgProfile.$inferSelect
+
+// --- 月度自动审计结果 -------------------------------------------------------
+// 每月幂等生成:按 (userId, period, entityId, code) 唯一,重跑覆盖更新
+export const auditFindings = pgTable('audit_findings', {
+  id: serial('id').primaryKey(),
+  userId: text('userId').notNull(), // 数据归属集团
+  period: text('period').notNull(), // 审计期间 YYYY-MM
+  entityId: integer('entityId'), // 关联主体(null=集团级)
+  dimension: text('dimension').notNull(), // revenue 收支 | reconciliation 对账 | tax 税务 | payroll 工资分红 | account 账户满额
+  code: text('code').notNull(), // 规则编码(幂等键)
+  level: text('level').notNull().default('pass'), // pass 通过 | warn 警告 | risk 异常
+  title: text('title').notNull(),
+  detail: text('detail'),
+  metric: numeric('metric', { precision: 16, scale: 2 }), // 关联金额/比率
+  status: text('status').notNull().default('open'), // open 待处理 | resolved 已处理
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export type AuditFinding = typeof auditFindings.$inferSelect
 
 export type Entity = typeof entities.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
