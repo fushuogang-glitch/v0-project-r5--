@@ -65,7 +65,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         {/* 主标语 + 数据 */}
         <div className="space-y-12">
           <div className="flex items-start gap-3">
-            <span className="mt-1.5 h-7 w-1 rounded-full bg-violet-500" aria-hidden />
+            <span className="mt-1.5 h-7 w-1 rounded-full bg-rose-500" aria-hidden />
             <div>
               <h2 className="text-2xl font-semibold tracking-tight">新美业智控领跑者</h2>
               <p className="mt-2 text-sm text-neutral-500">用 AI 让美业达到极限</p>
@@ -79,7 +79,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
                   {s.accent ? (
                     <>
                       {s.value.replace('%', '')}
-                      <span className="text-violet-400"> %</span>
+                      <span className="text-rose-400"> %</span>
                     </>
                   ) : (
                     s.value
@@ -96,7 +96,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           <div className="h-px w-full bg-neutral-800" />
           <p className="text-sm text-neutral-400">
             武汉一二一 · 5店全线接入 · 客户复购率
-            <span className="font-semibold text-violet-400"> 10倍</span>
+            <span className="font-semibold text-rose-400"> 10倍</span>
           </p>
           <p className="text-xs text-neutral-600">© 2026 诺塔智控 · NOTA CoreControl™</p>
         </div>
