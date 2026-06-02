@@ -36,5 +36,28 @@ export function isSyntheticEmail(email: string | null | undefined): boolean {
   return !!email && email.endsWith(`@${SYNTHETIC_EMAIL_DOMAIN}`)
 }
 
+/** 统一账号校验:手机号 / 用户名 / 邮箱 任一合法即可 */
+export function isValidAccount(value: string): boolean {
+  const v = value.trim()
+  return looksLikeEmail(v) || isValidUsername(v)
+}
+
+/**
+ * 将"登录账号"解析为底层注册身份:
+ * - 邮箱:用真实邮箱注册(不设用户名),登录时走邮箱通道
+ * - 手机号 / 用户名:用隐藏合成邮箱承载 email 要求,真实账号存为 username
+ */
+export function resolveSignupIdentity(account: string): {
+  email: string
+  username?: string
+  displayUsername?: string
+} {
+  const v = account.trim()
+  if (looksLikeEmail(v)) {
+    return { email: v.toLowerCase() }
+  }
+  return { email: generateSyntheticEmail(), username: v, displayUsername: v }
+}
+
 /** 中文校验提示文案 */
-export const USERNAME_HINT = '登录账号支持手机号或用户名(2-30 位,可用中英文、数字、下划线)'
+export const USERNAME_HINT = '登录账号支持手机号、用户名或邮箱(2-30 位,可用中英文、数字、下划线)'

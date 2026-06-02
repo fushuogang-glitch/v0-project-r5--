@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { bootstrapPlatformAdmin } from '@/app/actions/platform-auth'
 import { authClient } from '@/lib/auth-client'
+import { looksLikeEmail } from '@/lib/account-id'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,12 +28,11 @@ export function PlatformSetupForm() {
       setError(res.error ?? '创建失败')
       return
     }
-    // 创建成功后自动登录并进入中控台
-    const { error: signErr } = await authClient.signIn.username({
-      username: account.trim(),
-      password,
-      rememberMe: true,
-    })
+    // 创建成功后自动登录并进入中控台(邮箱走邮箱通道,其余走用户名通道)
+    const acc = account.trim()
+    const { error: signErr } = looksLikeEmail(acc)
+      ? await authClient.signIn.email({ email: acc, password, rememberMe: true })
+      : await authClient.signIn.username({ username: acc, password, rememberMe: true })
     setLoading(false)
     if (signErr) {
       // 创建成功但自动登录失败,引导去登录页
@@ -84,9 +84,12 @@ export function PlatformSetupForm() {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              placeholder="手机号 / 用户名"
+              placeholder="手机号 / 用户名 / 邮箱"
               className="h-9 border-neutral-700 bg-neutral-800 text-sm text-neutral-100 placeholder:text-neutral-500"
             />
+            <p className="text-[11px] leading-relaxed text-neutral-500">
+              支持手机号、用户名或邮箱(2-30 位)
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="s-password" className="text-xs text-neutral-300">

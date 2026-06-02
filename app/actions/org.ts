@@ -5,7 +5,7 @@ import { db, pool } from '@/lib/db'
 import { user as userTable, entities, accounts } from '@/lib/db/schema'
 import { getScope, VIEW_COOKIE } from '@/lib/scope'
 import { generateAgentKey } from '@/lib/agent-auth'
-import { isValidUsername, generateSyntheticEmail } from '@/lib/account-id'
+import { isValidAccount, resolveSignupIdentity } from '@/lib/account-id'
 import { and, eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -51,30 +51,31 @@ export async function createStoreAccount(input: {
   if (!entity) return { ok: false, error: '主体不存在或无权操作' }
 
   const account = input.account.trim()
-  if (!isValidUsername(account)) {
-    return { ok: false, error: '登录账号需为有效的手机号或用户名(2-30 位)' }
+  if (!isValidAccount(account)) {
+    return { ok: false, error: '登录账号支持手机号、用户名或邮箱(2-30 位)' }
   }
   if (input.password.length < 8) {
     return { ok: false, error: '密码至少 8 位' }
   }
 
-  // 用户名以隐藏合成邮箱承载底层 email 要求,用户实际用 account 登录
-  const syntheticEmail = generateSyntheticEmail()
+  // 邮箱直接注册;手机号/用户名走合成邮箱 + 用户名,用户实际用 account 登录
+  const identity = resolveSignupIdentity(account)
   try {
     // 不转发当前请求 headers,避免 autoSignIn 顶替掉管理员自己的会话。
     await auth.api.signUpEmail({
       body: {
         name: input.name,
-        email: syntheticEmail,
+        email: identity.email,
         password: input.password,
-        username: account,
-        displayUsername: account,
+        ...(identity.username
+          ? { username: identity.username, displayUsername: identity.displayUsername }
+          : {}),
       },
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : '创建失败'
     if (/exist|taken|unique/i.test(msg)) {
-      return { ok: false, error: '该手机号 / 用户名已被注册' }
+      return { ok: false, error: '该手机号 / 用户名 / 邮箱已被注册' }
     }
     return { ok: false, error: msg }
   }
@@ -82,7 +83,7 @@ export async function createStoreAccount(input: {
   // 将新账号标记为门店端,并绑定到主体 + 归属当前集团数据
   await pool.query(
     'UPDATE "user" SET "role" = $1, "ownerId" = $2, "entityId" = $3 WHERE email = $4',
-    ['store', scope.ownerId, input.entityId, syntheticEmail],
+    ['store', scope.ownerId, input.entityId, identity.email],
   )
 
   revalidatePath('/entities')

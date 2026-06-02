@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { getScope } from '@/lib/scope'
 import { financeRoleDef, type FinanceRole } from '@/lib/finance-roles'
-import { isValidUsername, generateSyntheticEmail } from '@/lib/account-id'
+import { isValidAccount, resolveSignupIdentity } from '@/lib/account-id'
 import { revalidatePath } from 'next/cache'
 
 export type FinanceStaff = {
@@ -32,29 +32,31 @@ export async function createFinanceStaff(input: {
     return { ok: false, error: '无效的财务角色' }
   }
   const account = input.account.trim()
-  if (!isValidUsername(account)) {
-    return { ok: false, error: '登录账号需为有效的手机号或用户名(2-30 位)' }
+  if (!isValidAccount(account)) {
+    return { ok: false, error: '登录账号支持手机号、用户名或邮箱(2-30 位)' }
   }
   if (input.password.length < 8) {
     return { ok: false, error: '密码至少 8 位' }
   }
 
-  const syntheticEmail = generateSyntheticEmail()
+  // 邮箱直接注册;手机号/用户名走合成邮箱 + 用户名
+  const identity = resolveSignupIdentity(account)
   try {
     // 不转发当前 headers,避免 autoSignIn 顶替掉管理员会话
     await auth.api.signUpEmail({
       body: {
         name: input.name,
-        email: syntheticEmail,
+        email: identity.email,
         password: input.password,
-        username: account,
-        displayUsername: account,
+        ...(identity.username
+          ? { username: identity.username, displayUsername: identity.displayUsername }
+          : {}),
       },
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : '创建失败'
     if (/exist|taken|unique/i.test(msg)) {
-      return { ok: false, error: '该手机号 / 用户名已被注册' }
+      return { ok: false, error: '该手机号 / 用户名 / 邮箱已被注册' }
     }
     return { ok: false, error: msg }
   }
@@ -62,7 +64,7 @@ export async function createFinanceStaff(input: {
   // 标记为集团级财务子账号:可查看集团数据,但带 financeRole 受 RBAC 限制
   await pool.query(
     'UPDATE "user" SET "role" = $1, "ownerId" = $2, "entityId" = NULL, "financeRole" = $3 WHERE email = $4',
-    ['group', scope.ownerId, input.financeRole, syntheticEmail],
+    ['group', scope.ownerId, input.financeRole, identity.email],
   )
 
   revalidatePath('/settings')

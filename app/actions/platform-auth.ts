@@ -2,7 +2,7 @@
 
 import { auth } from '@/lib/auth'
 import { pool } from '@/lib/db'
-import { generateSyntheticEmail, isValidUsername } from '@/lib/account-id'
+import { isValidAccount, resolveSignupIdentity } from '@/lib/account-id'
 
 /** 系统是否已存在平台超管(决定是否还允许首次引导) */
 export async function platformAdminExists(): Promise<boolean> {
@@ -21,7 +21,7 @@ export async function bootstrapPlatformAdmin(input: {
 }): Promise<{ ok: boolean; error?: string }> {
   const account = input.account.trim()
   if (!input.name.trim()) return { ok: false, error: '请填写姓名' }
-  if (!isValidUsername(account)) return { ok: false, error: '账号支持手机号或用户名(2-30 位)' }
+  if (!isValidAccount(account)) return { ok: false, error: '账号支持手机号、用户名或邮箱(2-30 位)' }
   if (input.password.length < 8) return { ok: false, error: '密码至少 8 位' }
 
   // 关键安全闸:已存在超管则拒绝
@@ -29,16 +29,18 @@ export async function bootstrapPlatformAdmin(input: {
     return { ok: false, error: '平台超管已存在,首次引导已关闭' }
   }
 
-  const syntheticEmail = generateSyntheticEmail()
+  // 邮箱直接注册;手机号/用户名走合成邮箱 + 用户名
+  const identity = resolveSignupIdentity(account)
   try {
     // 不转发 headers,避免 autoSignIn 干扰
     await auth.api.signUpEmail({
       body: {
         name: input.name.trim(),
-        email: syntheticEmail,
+        email: identity.email,
         password: input.password,
-        username: account,
-        displayUsername: account,
+        ...(identity.username
+          ? { username: identity.username, displayUsername: identity.displayUsername }
+          : {}),
       },
     })
   } catch (e) {
@@ -50,7 +52,7 @@ export async function bootstrapPlatformAdmin(input: {
   // 提升为平台超管:不属于任何租户(ownerId/entityId 置空)
   await pool.query(
     `UPDATE "user" SET role='platform', "ownerId"=NULL, "entityId"=NULL, "financeRole"=NULL WHERE email=$1`,
-    [syntheticEmail],
+    [identity.email],
   )
   return { ok: true }
 }
