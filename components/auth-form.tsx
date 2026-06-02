@@ -151,7 +151,7 @@ export function AuthForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
-                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                  autoComplete="current-password"
                   placeholder="至少 8 位字符"
                   className="h-9 pr-9 text-sm"
                 />
