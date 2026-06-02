@@ -17,6 +17,16 @@ const STATS = [
   { value: '92%', label: 'AI决策精准度', accent: true },
 ]
 
+// 财务合作客户(连锁美业品牌)
+const FINANCE_CLIENTS = [
+  '武汉一二一',
+  '美研造型',
+  '尚format美学',
+  '丝域养发',
+  '伊莱美容',
+  '卡迪雅连锁',
+]
+
 export function AuthForm() {
   const router = useRouter()
   const [account, setAccount] = useState('') // 手机号 / 用户名 / 邮箱
@@ -88,13 +98,27 @@ export function AuthForm() {
           </dl>
         </div>
 
-        {/* 底部 */}
+        {/* 底部:财务合作客户 */}
         <div className="space-y-5">
           <div className="h-px w-full bg-neutral-800" />
-          <p className="text-sm text-neutral-400">
-            武汉一二一 · 5店全线接入 · 客户复购率
-            <span className="font-semibold text-amber-300"> 10倍</span>
-          </p>
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+              财务合作客户
+            </p>
+            <p className="mt-1.5 text-xs text-neutral-400">
+              已为以下连锁品牌提供智能财税托管与多店账务核算服务
+            </p>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {FINANCE_CLIENTS.map((c) => (
+                <li
+                  key={c}
+                  className="rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs text-neutral-300"
+                >
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
           <p className="text-xs text-neutral-600">© 2026 诺塔智控 · NOTA CoreControl™</p>
         </div>
       </aside>
