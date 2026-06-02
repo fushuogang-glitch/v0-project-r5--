@@ -1,16 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
-import {
-  looksLikeEmail,
-  isValidUsername,
-  generateSyntheticEmail,
-  USERNAME_HINT,
-} from '@/lib/account-id'
+import { looksLikeEmail } from '@/lib/account-id'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,9 +17,8 @@ const STATS = [
   { value: '92%', label: 'AI决策精准度', accent: true },
 ]
 
-export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
+export function AuthForm() {
   const router = useRouter()
-  const [name, setName] = useState('')
   const [account, setAccount] = useState('') // 手机号 / 用户名 / 邮箱
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -33,47 +26,20 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const isSignUp = mode === 'sign-up'
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
     const value = account.trim()
-
-    if (isSignUp) {
-      // 注册:登录账号为手机号 / 用户名(不接受邮箱),系统自动生成隐藏合成邮箱
-      if (!isValidUsername(value)) {
-        setError('请输入有效的手机号或用户名(2-30 位,可用中英文 / 数字 / 下划线)')
-        return
-      }
-      setLoading(true)
-      const { error } = await authClient.signUp.email({
-        email: generateSyntheticEmail(),
-        password,
-        name,
-        username: value,
-        displayUsername: value,
-      } as Parameters<typeof authClient.signUp.email>[0])
-      setLoading(false)
-      if (error) {
-        const msg = error.message ?? ''
-        setError(
-          /exist|taken|unique/i.test(msg) ? '该手机号 / 用户名已被注册' : msg || '注册失败,请重试',
-        )
-        return
-      }
-    } else {
-      // 登录:含 @ 走邮箱(兼容历史账号),否则走用户名 / 手机号
-      setLoading(true)
-      const { error } = looksLikeEmail(value)
-        ? await authClient.signIn.email({ email: value, password, rememberMe: remember })
-        : await authClient.signIn.username({ username: value, password, rememberMe: remember })
-      setLoading(false)
-      if (error) {
-        setError(error.message ?? '账号或密码错误,请重试')
-        return
-      }
+    // 登录:含 @ 走邮箱通道,否则走用户名 / 手机号通道
+    setLoading(true)
+    const { error } = looksLikeEmail(value)
+      ? await authClient.signIn.email({ email: value, password, rememberMe: remember })
+      : await authClient.signIn.username({ username: value, password, rememberMe: remember })
+    setLoading(false)
+    if (error) {
+      setError(error.message ?? '账号或密码错误,请重试')
+      return
     }
 
     router.push('/')
@@ -145,38 +111,19 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           </div>
 
           <div className="mb-6">
-            <p className="text-xs text-muted-foreground">
-              {isSignUp ? '加入我们' : '欢迎回来'}
-            </p>
+            <p className="text-xs text-muted-foreground">欢迎回来</p>
             <h2 className="mt-1 text-xl font-semibold tracking-tight text-foreground text-balance">
-              {isSignUp ? '创建您的账户' : '登录您的账户'}
+              登录您的账户
             </h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              {isSignUp
-                ? '注册以接入 NOTA CoreControl™ 财务管理'
-                : '登录您的 NOTA CoreControl™ 账户'}
+              登录您的 NOTA CoreControl™ 账户
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            {isSignUp && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name" className="text-xs">姓名</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  placeholder="请输入您的姓名"
-                  className="h-9 text-sm"
-                />
-              </div>
-            )}
-
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="account" className="text-xs">
-                {isSignUp ? '登录账号(手机号 / 用户名)' : '手机号 / 用户名'}
+                手机号 / 用户名 / 邮箱
               </Label>
               <Input
                 id="account"
@@ -189,12 +136,9 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                placeholder={isSignUp ? '如:13800138000 或 zhang_san' : '请输入手机号或用户名'}
+                placeholder="请输入手机号、用户名或邮箱"
                 className="h-9 text-sm"
               />
-              {isSignUp && (
-                <p className="text-[11px] leading-relaxed text-muted-foreground">{USERNAME_HINT}</p>
-              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -222,23 +166,16 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
               </div>
             </div>
 
-            {!isSignUp && (
-              <div className="flex items-center justify-between text-xs">
-                <label className="flex cursor-pointer items-center gap-2 text-foreground">
-                  <Checkbox
-                    checked={remember}
-                    onCheckedChange={(v) => setRemember(v === true)}
-                  />
-                  记住我
-                </label>
-                <Link
-                  href="/sign-in"
-                  className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                >
-                  忘记密码?
-                </Link>
-              </div>
-            )}
+            <div className="flex items-center justify-between text-xs">
+              <label className="flex cursor-pointer items-center gap-2 text-foreground">
+                <Checkbox
+                  checked={remember}
+                  onCheckedChange={(v) => setRemember(v === true)}
+                />
+                记住我
+              </label>
+              <span className="text-muted-foreground">忘记密码请联系管理员</span>
+            </div>
 
             {error && (
               <p className="text-xs text-destructive" role="alert">
@@ -247,18 +184,12 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
             )}
 
             <Button type="submit" disabled={loading} className="h-9 w-full text-sm">
-              {loading ? '请稍候...' : isSignUp ? '创建账户' : '登录'}
+              {loading ? '请稍候...' : '登录'}
             </Button>
           </form>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            {isSignUp ? '已经有账户了? ' : '首次使用? '}
-            <Link
-              href={isSignUp ? '/sign-in' : '/sign-up'}
-              className="font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              {isSignUp ? '去登录' : '联系您的管理员开通账号'}
-            </Link>
+            首次使用?账号由您的管理员或服务商开通
           </p>
 
           <p className="mt-2 text-center text-xs text-muted-foreground">
