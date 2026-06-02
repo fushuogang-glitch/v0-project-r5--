@@ -1,8 +1,10 @@
 'use server'
 
 import { pool } from '@/lib/db'
+import { auth } from '@/lib/auth'
 import { requirePlatformAdmin } from '@/lib/platform'
 import { notifyPlatform } from '@/lib/platform-notify'
+import { isValidAccount, resolveSignupIdentity } from '@/lib/account-id'
 import { revalidatePath } from 'next/cache'
 
 // ---------------------------------------------------------------------------
@@ -763,4 +765,75 @@ export async function getPortMonitor(): Promise<PortMonitorRow[]> {
       agentCount30d: r.agent30 as number,
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// 开通品牌(集团管理员):仅平台超管可调用,为客户创建一个 group 主账号
+// 该账号即一个"租户/品牌",其名下可自行开通门店、财务岗等各级子账号
+// ---------------------------------------------------------------------------
+export type CreateTenantInput = {
+  brandName: string // 品牌/公司名称
+  account: string // 登录账号:手机号 / 用户名 / 邮箱
+  password: string
+  province?: string | null // 所属省份(用于地图聚合)
+  plan?: string | null // 套餐
+  subscriptionDays?: number | null // 订阅时长(天),为空则不设到期
+}
+
+export async function createTenant(
+  input: CreateTenantInput,
+): Promise<{ ok: true; tenantId: string } | { ok: false; error: string }> {
+  await requirePlatformAdmin()
+
+  const brandName = input.brandName?.trim()
+  const account = input.account?.trim()
+  if (!brandName) return { ok: false, error: '请填写品牌/公司名称' }
+  if (!account || !isValidAccount(account)) {
+    return { ok: false, error: '登录账号支持手机号、用户名或邮箱(2-30 位)' }
+  }
+  if (!input.password || input.password.length < 8) {
+    return { ok: false, error: '初始密码至少 8 位' }
+  }
+
+  // 邮箱直接注册;手机号/用户名走合成邮箱 + 用户名
+  const identity = resolveSignupIdentity(account)
+  try {
+    // 不转发 headers,避免 autoSignIn 顶替超管自己的会话
+    await auth.api.signUpEmail({
+      body: {
+        name: brandName,
+        email: identity.email,
+        password: input.password,
+        ...(identity.username
+          ? { username: identity.username, displayUsername: identity.displayUsername }
+          : {}),
+      },
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '创建失败'
+    if (/exist|taken|unique/i.test(msg)) return { ok: false, error: '该账号已被占用' }
+    return { ok: false, error: msg }
+  }
+
+  // 计算订阅到期
+  const subscriptionEndsAt =
+    input.subscriptionDays && input.subscriptionDays > 0
+      ? new Date(Date.now() + input.subscriptionDays * 86400000)
+      : null
+
+  // 提升为品牌主账号:group + 自持(ownerId = 自身)+ 品牌运营元数据
+  const upd = await pool.query(
+    `UPDATE "user"
+        SET role='group', "ownerId"=id, "entityId"=NULL, "financeRole"=NULL,
+            province=$2, plan=$3, "subscriptionEndsAt"=$4
+      WHERE email=$1
+      RETURNING id`,
+    [identity.email, input.province ?? null, input.plan ?? null, subscriptionEndsAt],
+  )
+  const tenantId = upd.rows[0]?.id as string | undefined
+  if (!tenantId) return { ok: false, error: '账号创建后状态写入失败,请重试' }
+
+  revalidatePath('/platform/tenants')
+  revalidatePath('/platform')
+  return { ok: true, tenantId }
 }
