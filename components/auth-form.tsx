@@ -72,7 +72,7 @@ export function AuthForm() {
         {/* 主标语 + 数据 */}
         <div className="space-y-12">
           <div className="flex items-start gap-3">
-            <span className="mt-1.5 h-7 w-1 rounded-full bg-amber-400" aria-hidden />
+            <span className="mt-1.5 h-7 w-1 rounded-full bg-primary" aria-hidden />
             <div>
               <h2 className="text-2xl font-semibold tracking-tight">新美业智控领跑者</h2>
               <p className="mt-2 text-sm text-neutral-500">用 AI 让美业达到极限</p>
@@ -85,11 +85,16 @@ export function AuthForm() {
                 <dt className="text-4xl font-bold tracking-tight">
                   {s.accent ? (
                     <>
-                      {s.value.replace('%', '')}
-                      <span className="text-amber-300"> %</span>
+                      {s.value.replace('+', '').replace('%', '')}
+                      <span className="text-primary">
+                        {s.value.includes('+') ? '+' : ' %'}
+                      </span>
                     </>
                   ) : (
-                    s.value
+                    <>
+                      {s.value.replace(/\+/g, '')}
+                      {s.value.includes('+') && <span className="text-primary">+</span>}
+                    </>
                   )}
                 </dt>
                 <dd className="mt-1 text-sm text-neutral-500">{s.label}</dd>
