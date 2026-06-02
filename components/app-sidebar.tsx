@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -16,6 +17,7 @@ import {
   ClipboardCheck,
   FileSignature,
   LogOut,
+  KeyRound,
 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { financeRoleCanAccess } from '@/lib/finance-roles'
@@ -41,6 +43,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ThemeSwitcher } from '@/components/theme-switcher'
+import { ChangePasswordDialog } from '@/components/change-password-dialog'
 
 type NavItem = { title: string; href: string; icon: typeof LayoutDashboard }
 
@@ -95,6 +98,7 @@ export function AppSidebar({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [pwOpen, setPwOpen] = useState(false)
   const baseNav = role === 'store' ? storeNav(storeEntityId) : groupNav
   // 财务子账号:按岗位职责过滤可见栏目;非管理员隐藏「设置」
   const navItems = baseNav.filter((item) => {
@@ -187,6 +191,10 @@ export function AppSidebar({
           <DropdownMenuContent side="top" align="start" className="w-56">
             <DropdownMenuLabel>我的账户</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setPwOpen(true)}>
+              <KeyRound className="size-4" />
+              修改密码
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="size-4" />
               退出登录
@@ -194,6 +202,8 @@ export function AppSidebar({
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarFooter>
+
+      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </Sidebar>
   )
 }

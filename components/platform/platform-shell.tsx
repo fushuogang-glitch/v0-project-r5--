@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
-import { LayoutDashboard, Building2, BellRing, LogOut, ShieldCheck, MapPinned, Plug } from 'lucide-react'
+import { LayoutDashboard, Building2, BellRing, LogOut, ShieldCheck, MapPinned, Plug, KeyRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ChangePasswordDialog } from '@/components/change-password-dialog'
 
 type NavItem = { title: string; href: string; icon: React.ElementType; badge?: number }
 
@@ -19,6 +21,7 @@ export function PlatformShell({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [pwOpen, setPwOpen] = useState(false)
 
   const nav: NavItem[] = [
     { title: '运营中控台', href: '/platform', icon: LayoutDashboard },
@@ -83,6 +86,13 @@ export function PlatformShell({
             <p className="truncate text-[11px] text-neutral-500">{admin.loginId}</p>
           </div>
           <button
+            onClick={() => setPwOpen(true)}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+          >
+            <KeyRound className="size-4" />
+            修改密码
+          </button>
+          <button
             onClick={signOut}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
           >
@@ -93,6 +103,8 @@ export function PlatformShell({
       </aside>
 
       <main className="flex-1 overflow-x-hidden">{children}</main>
+
+      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </div>
   )
 }
