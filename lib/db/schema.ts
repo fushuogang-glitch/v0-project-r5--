@@ -33,6 +33,15 @@ export const user = pgTable('user', {
   province: text('province'), // 客户所在省份(中文全称,匹配地图)
   plan: text('plan').default('trial'), // 套餐:trial 试用 | basic 基础 | pro 专业 | flagship 旗舰
   subscriptionEndsAt: timestamp('subscriptionEndsAt'), // 订阅到期日
+  // 升级新增:运营档案 + 账号生命周期 + 密码安全(仅租户主账号)
+  bossName: text('bossName'), // 老板/负责人姓名
+  city: text('city'), // 所在城市
+  address: text('address'), // 详细地址
+  contactPhone: text('contactPhone'), // 联系电话
+  accountStatus: text('accountStatus').notNull().default('active'), // active 正常 | suspended 停用 | expired 已到期
+  subscriptionStartAt: timestamp('subscriptionStartAt'), // 开通日期
+  pwdPlainEnc: text('pwdPlainEnc'), // 登录密码 AES 加密副本(供超管查看明文)
+  pwdUpdatedAt: timestamp('pwdUpdatedAt'), // 密码最近更新时间
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -206,7 +215,7 @@ export const salaries = pgTable('salaries', {
   entityId: integer('entityId'), // 所属门店(集团员工为空)
   year: integer('year').notNull(),
   month: integer('month').notNull(), // 1-12
-  baseSalary: numeric('baseSalary', { precision: 12, scale: 2 }).notNull().default('0'), // 基本工资
+  baseSalary: numeric('baseSalary', { precision: 12, scale: 2 }).notNull().default('0'), // ���本工资
   commission: numeric('commission', { precision: 12, scale: 2 }).notNull().default('0'), // 提成
   allowance: numeric('allowance', { precision: 12, scale: 2 }).notNull().default('0'), // 补贴
   deduction: numeric('deduction', { precision: 12, scale: 2 }).notNull().default('0'), // 扣款
@@ -354,6 +363,45 @@ export const platformAlerts = pgTable('platform_alerts', {
 })
 
 export type PlatformAlert = typeof platformAlerts.$inferSelect
+
+// --- 升级:租户改密历史(中台重置密码留痕,不含明文) -----------------------
+export const tenantPwdHistory = pgTable('tenant_pwd_history', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenantId').notNull(), // 租户主账号 userId
+  operatorId: text('operatorId').notNull(), // 操作的平台超管 userId
+  operatorName: text('operatorName'),
+  note: text('note'), // 备注(如:客户遗忘密码)
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+// --- 升级:租户续费记录 -----------------------------------------------------
+export const tenantRenewal = pgTable('tenant_renewal', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenantId').notNull(),
+  operatorId: text('operatorId').notNull(),
+  operatorName: text('operatorName'),
+  days: integer('days').notNull(), // 本次续费天数
+  planBefore: text('planBefore'),
+  planAfter: text('planAfter'),
+  endsAtBefore: timestamp('endsAtBefore'),
+  endsAtAfter: timestamp('endsAtAfter'),
+  note: text('note'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+// --- 升级:明文密码查看审计 -------------------------------------------------
+export const tenantPwdViewLog = pgTable('tenant_pwd_view_log', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenantId').notNull(),
+  operatorId: text('operatorId').notNull(),
+  operatorName: text('operatorName'),
+  ip: text('ip'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+export type TenantPwdHistory = typeof tenantPwdHistory.$inferSelect
+export type TenantRenewal = typeof tenantRenewal.$inferSelect
+export type TenantPwdViewLog = typeof tenantPwdViewLog.$inferSelect
 
 // --- 合同管理:登记收集 + 在线签署 + 与对公进账勾稽(三流合一) ----------
 // 合同主表:每份对公业务合同一行,可挂多笔进账流水(transactions.contractId)
