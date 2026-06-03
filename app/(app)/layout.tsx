@@ -6,9 +6,12 @@ import { autoSyncIfDue } from '@/app/actions/saas'
 import { generateComplianceNodes, getComplianceBadges } from '@/app/actions/compliance'
 import { autoRunAuditIfDue } from '@/app/actions/audit'
 import { getScope, getViewableEntities } from '@/lib/scope'
+import { getTenantLifecycle } from '@/lib/tenant-lifecycle'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ViewSwitcher } from '@/components/view-switcher'
 import { ComplianceBanner } from '@/components/compliance-banner'
+import { RenewBanner } from '@/components/renew-banner'
+import { TenantLockedScreen } from '@/components/tenant-locked-screen'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 
 export default async function AppLayout({
@@ -21,6 +24,24 @@ export default async function AppLayout({
 
   // 平台运营方超管不进入客户系统,跳转到独立的运营中台
   if ((session.user as { role?: string }).role === 'platform') redirect('/platform')
+
+  // 账号生命周期拦截:按租户主账号(ownerId)判断停用 / 到期(含 7 天宽限)
+  const ownerId = (session.user as { ownerId?: string | null }).ownerId || session.user.id
+  const lifecycle = await getTenantLifecycle(ownerId)
+  if (lifecycle.status === 'suspended') {
+    return (
+      <TenantLockedScreen reason="suspended" brandName={lifecycle.brandName} endedAt={null} />
+    )
+  }
+  if (lifecycle.status === 'expired' && !lifecycle.inGrace) {
+    return (
+      <TenantLockedScreen
+        reason="expired"
+        brandName={lifecycle.brandName}
+        endedAt={lifecycle.subscriptionEndsAt}
+      />
+    )
+  }
 
   // 首次进入自动生成演示数据(集团管理员;门店端会跳过)
   await ensureSeedData()
@@ -62,6 +83,13 @@ export default async function AppLayout({
             </span>
           </div>
         </header>
+        {lifecycle.showRenewBanner && (
+          <RenewBanner
+            daysLeft={lifecycle.daysLeft}
+            inGrace={lifecycle.inGrace}
+            endsAt={lifecycle.subscriptionEndsAt}
+          />
+        )}
         <ComplianceBanner />
         {children}
       </SidebarInset>
