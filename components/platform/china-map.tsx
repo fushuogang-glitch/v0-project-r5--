@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps'
 import type { ProvinceStat } from '@/app/actions/platform'
-import { toEnglishProvince } from '@/lib/province-i18n'
+import { provinceEn } from '@/lib/province-i18n'
 
 const GEO_URL = '/geo/china-provinces.json'
 
@@ -170,7 +170,7 @@ export function ChinaMap({ stats }: { stats: ProvinceStat[] }) {
           >
             <p className="font-semibold text-neutral-100">
               {hover.name}
-              <span className="ml-1.5 font-normal text-neutral-500">{toEnglishProvince(hover.name)}</span>
+              <span className="ml-1.5 font-normal text-neutral-500">{provinceEn(hover.name)}</span>
             </p>
             {hover.stat && hover.stat.tenants > 0 ? (
               <div className="mt-1 space-y-0.5 text-neutral-400">
