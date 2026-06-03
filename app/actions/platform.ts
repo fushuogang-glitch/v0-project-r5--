@@ -2,9 +2,18 @@
 
 import { pool } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { hashPassword } from 'better-auth/crypto'
 import { requirePlatformAdmin } from '@/lib/platform'
 import { notifyPlatform } from '@/lib/platform-notify'
-import { isValidAccount, resolveSignupIdentity } from '@/lib/account-id'
+import { isValidAccount, resolveSignupIdentity, isSyntheticEmail } from '@/lib/account-id'
+import {
+  encryptPassword,
+  decryptPassword,
+  isPwdVaultReady,
+  PwdKeyMissingError,
+} from '@/lib/crypto'
+import { normalizeProvince } from '@/lib/province-i18n'
+import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 
 // ---------------------------------------------------------------------------
@@ -778,6 +787,11 @@ export type CreateTenantInput = {
   province?: string | null // 所属省份(用于地图聚合)
   plan?: string | null // 套餐
   subscriptionDays?: number | null // 订阅时长(天),为空则不设到期
+  // 升级新增运营档案
+  bossName?: string | null // 老板/负责人姓名
+  city?: string | null // 所在城市
+  address?: string | null // 详细地址
+  contactPhone?: string | null // 联系电话
 }
 
 export async function createTenant(
@@ -815,20 +829,45 @@ export async function createTenant(
     return { ok: false, error: msg }
   }
 
-  // 计算订阅到期
+  // 计算订阅区间
+  const now = new Date()
   const subscriptionEndsAt =
     input.subscriptionDays && input.subscriptionDays > 0
-      ? new Date(Date.now() + input.subscriptionDays * 86400000)
+      ? new Date(now.getTime() + input.subscriptionDays * 86400000)
       : null
 
-  // 提升为品牌主账号:group + 自持(ownerId = 自身)+ 品牌运营元数据
+  // 密码明文副本(供超管查看);未配置 PWD_ENC_KEY 时静默跳过,不阻断开户
+  let pwdPlainEnc: string | null = null
+  if (isPwdVaultReady()) {
+    try {
+      pwdPlainEnc = encryptPassword(input.password)
+    } catch {
+      pwdPlainEnc = null
+    }
+  }
+
+  // 提升为品牌主账号:group + 自持(ownerId = 自身)+ 品牌运营元数据 + 档案
   const upd = await pool.query(
     `UPDATE "user"
         SET role='group', "ownerId"=id, "entityId"=NULL, "financeRole"=NULL,
-            province=$2, plan=$3, "subscriptionEndsAt"=$4
+            province=$2, plan=$3, "subscriptionEndsAt"=$4,
+            "bossName"=$5, city=$6, address=$7, "contactPhone"=$8,
+            "accountStatus"='active', "subscriptionStartAt"=$9,
+            "pwdPlainEnc"=$10, "pwdUpdatedAt"=$9
       WHERE email=$1
       RETURNING id`,
-    [identity.email, input.province ?? null, input.plan ?? null, subscriptionEndsAt],
+    [
+      identity.email,
+      normalizeProvince(input.province) || null,
+      input.plan ?? null,
+      subscriptionEndsAt,
+      input.bossName?.trim() || null,
+      input.city?.trim() || null,
+      input.address?.trim() || null,
+      input.contactPhone?.trim() || null,
+      now,
+      pwdPlainEnc,
+    ],
   )
   const tenantId = upd.rows[0]?.id as string | undefined
   if (!tenantId) return { ok: false, error: '账号创建后状态写入失败,请重试' }
@@ -836,4 +875,274 @@ export async function createTenant(
   revalidatePath('/platform/tenants')
   revalidatePath('/platform')
   return { ok: true, tenantId }
+}
+
+// ---------------------------------------------------------------------------
+// 租户详情:基本信息 + 账号安全 + 订阅 + 运营数据(门店数/最近活跃)
+// ---------------------------------------------------------------------------
+export type TenantDetail = {
+  id: string
+  brandName: string
+  loginAccount: string // 展示用登录账号(用户名优先,合成邮箱隐藏)
+  isEmailLogin: boolean
+  bossName: string | null
+  city: string | null
+  province: string | null
+  address: string | null
+  contactPhone: string | null
+  plan: string | null
+  accountStatus: string
+  subscriptionStartAt: string | null
+  subscriptionEndsAt: string | null
+  daysLeft: number | null
+  pwdUpdatedAt: string | null
+  hasPlainPwd: boolean // 是否存有可查看的明文副本
+  pwdVaultReady: boolean // 服务器是否已配置 PWD_ENC_KEY
+  createdAt: string
+  storeCount: number
+  memberCount: number
+}
+
+export async function getTenantDetail(tenantId: string): Promise<TenantDetail | null> {
+  await requirePlatformAdmin()
+  const r = await pool.query(
+    `SELECT u.id, u.name, u.email, u.username, u."displayUsername",
+            u."bossName", u.city, u.province, u.address, u."contactPhone",
+            u.plan, u."accountStatus", u."subscriptionStartAt", u."subscriptionEndsAt",
+            u."pwdUpdatedAt", u."pwdPlainEnc", u."createdAt",
+            (SELECT count(*) FROM "user" s WHERE s."ownerId"=u.id AND s.role='store') AS store_count,
+            (SELECT count(*) FROM "user" m WHERE m."ownerId"=u.id AND m.id<>u.id) AS member_count
+       FROM "user" u
+      WHERE u.id=$1 AND u.role='group' AND u."ownerId"=u.id`,
+    [tenantId],
+  )
+  const row = r.rows[0]
+  if (!row) return null
+
+  const ends = row.subscriptionEndsAt ? new Date(row.subscriptionEndsAt) : null
+  const daysLeft = ends ? Math.ceil((ends.getTime() - Date.now()) / 86400000) : null
+  const isEmailLogin = !!row.email && !isSyntheticEmail(row.email)
+
+  return {
+    id: row.id,
+    brandName: row.name,
+    loginAccount: row.displayUsername || row.username || (isEmailLogin ? row.email : '—'),
+    isEmailLogin,
+    bossName: row.bossName ?? null,
+    city: row.city ?? null,
+    province: row.province ?? null,
+    address: row.address ?? null,
+    contactPhone: row.contactPhone ?? null,
+    plan: row.plan ?? null,
+    accountStatus: row.accountStatus ?? 'active',
+    subscriptionStartAt: row.subscriptionStartAt ? new Date(row.subscriptionStartAt).toISOString() : null,
+    subscriptionEndsAt: ends ? ends.toISOString() : null,
+    daysLeft,
+    pwdUpdatedAt: row.pwdUpdatedAt ? new Date(row.pwdUpdatedAt).toISOString() : null,
+    hasPlainPwd: !!row.pwdPlainEnc,
+    pwdVaultReady: isPwdVaultReady(),
+    createdAt: new Date(row.createdAt).toISOString(),
+    storeCount: Number(row.store_count) || 0,
+    memberCount: Number(row.member_count) || 0,
+  }
+}
+
+// 校验当前超管自己的登录密码(用于敏感操作二次确认)
+async function verifyAdminPassword(adminId: string, password: string): Promise<boolean> {
+  const r = await pool.query(`SELECT email FROM "user" WHERE id=$1`, [adminId])
+  const email = r.rows[0]?.email as string | undefined
+  if (!email) return false
+  try {
+    // 不转发 headers,避免新建会话影响当前登录态
+    await auth.api.signInEmail({ body: { email, password } })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 查看租户登录密码明文:需超管二次输入自己的密码 + 写审计
+// ---------------------------------------------------------------------------
+export async function viewTenantPassword(
+  tenantId: string,
+  adminPassword: string,
+): Promise<{ ok: true; password: string } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin()
+  if (!isPwdVaultReady()) {
+    return { ok: false, error: '服务器未配置 PWD_ENC_KEY,无法查看明文密码' }
+  }
+  if (!adminPassword) return { ok: false, error: '请输入您的登录密码以验证身份' }
+  const ok = await verifyAdminPassword(admin.id, adminPassword)
+  if (!ok) return { ok: false, error: '身份验证失败:密码不正确' }
+
+  const r = await pool.query(`SELECT "pwdPlainEnc" FROM "user" WHERE id=$1`, [tenantId])
+  const enc = r.rows[0]?.pwdPlainEnc as string | null
+  if (!enc) {
+    return { ok: false, error: '该账号尚无明文副本,请先「重置密码」以启用查看' }
+  }
+  let plain: string | null = null
+  try {
+    plain = decryptPassword(enc)
+  } catch (e) {
+    if (e instanceof PwdKeyMissingError) {
+      return { ok: false, error: '服务器未配置 PWD_ENC_KEY' }
+    }
+    plain = null
+  }
+  if (!plain) return { ok: false, error: '密文损坏或密钥不匹配,无法解密' }
+
+  // 写审计
+  let ip: string | null = null
+  try {
+    const h = await headers()
+    ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || null
+  } catch {}
+  await pool.query(
+    `INSERT INTO tenant_pwd_view_log ("tenantId","operatorId","operatorName",ip)
+     VALUES ($1,$2,$3,$4)`,
+    [tenantId, admin.id, admin.name, ip],
+  )
+  return { ok: true, password: plain }
+}
+
+// ---------------------------------------------------------------------------
+// 重置租户密码:超管设置新密码,同步更新明文副本 + 留痕
+// ---------------------------------------------------------------------------
+export async function resetTenantPassword(
+  tenantId: string,
+  newPassword: string,
+  note?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin()
+  if (!newPassword || newPassword.length < 8) {
+    return { ok: false, error: '新密码至少 8 位' }
+  }
+  const r = await pool.query(`SELECT email FROM "user" WHERE id=$1 AND role='group'`, [tenantId])
+  const email = r.rows[0]?.email as string | undefined
+  if (!email) return { ok: false, error: '租户不存在' }
+
+  // 直接重写 credential 账户的密码哈希(无 admin 插件,故走底层 account 表)
+  try {
+    const hashed = await hashPassword(newPassword)
+    const up = await pool.query(
+      `UPDATE account SET password=$2, "updatedAt"=now()
+        WHERE "userId"=$1 AND "providerId"='credential'`,
+      [tenantId, hashed],
+    )
+    if (!up.rowCount) {
+      return { ok: false, error: '该账号无密码凭证记录,无法重置' }
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '重置失败'
+    return { ok: false, error: msg }
+  }
+
+  // 更新明文副本(若配置了保险库)
+  let pwdPlainEnc: string | null = null
+  if (isPwdVaultReady()) {
+    try {
+      pwdPlainEnc = encryptPassword(newPassword)
+    } catch {
+      pwdPlainEnc = null
+    }
+  }
+  await pool.query(
+    `UPDATE "user" SET "pwdPlainEnc"=COALESCE($2,"pwdPlainEnc"), "pwdUpdatedAt"=now() WHERE id=$1`,
+    [tenantId, pwdPlainEnc],
+  )
+  await pool.query(
+    `INSERT INTO tenant_pwd_history ("tenantId","operatorId","operatorName",note)
+     VALUES ($1,$2,$3,$4)`,
+    [tenantId, admin.id, admin.name, note?.trim() || null],
+  )
+
+  revalidatePath(`/platform/tenants/${tenantId}`)
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// 续费:延长订阅到期 + 可选升级套餐 + 留痕。若已到期则从今天起算。
+// ---------------------------------------------------------------------------
+export async function renewTenant(
+  tenantId: string,
+  days: number,
+  opts?: { plan?: string | null; note?: string },
+): Promise<{ ok: true; endsAt: string } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin()
+  if (!days || days <= 0) return { ok: false, error: '续费天数需大于 0' }
+
+  const r = await pool.query(
+    `SELECT plan, "subscriptionEndsAt" FROM "user" WHERE id=$1 AND role='group'`,
+    [tenantId],
+  )
+  const row = r.rows[0]
+  if (!row) return { ok: false, error: '租户不存在' }
+
+  const planBefore = row.plan as string | null
+  const endsBefore = row.subscriptionEndsAt ? new Date(row.subscriptionEndsAt) : null
+  // 已过期或无到期日:从今天起算;否则在原到期日上叠加
+  const base = endsBefore && endsBefore.getTime() > Date.now() ? endsBefore : new Date()
+  const endsAfter = new Date(base.getTime() + days * 86400000)
+  const planAfter = opts?.plan ?? planBefore
+
+  await pool.query(
+    `UPDATE "user"
+        SET "subscriptionEndsAt"=$2, plan=$3,
+            "accountStatus"=CASE WHEN "accountStatus"='expired' THEN 'active' ELSE "accountStatus" END
+      WHERE id=$1`,
+    [tenantId, endsAfter, planAfter],
+  )
+  await pool.query(
+    `INSERT INTO tenant_renewal
+       ("tenantId","operatorId","operatorName",days,"planBefore","planAfter","endsAtBefore","endsAtAfter",note)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [tenantId, admin.id, admin.name, days, planBefore, planAfter, endsBefore, endsAfter, opts?.note?.trim() || null],
+  )
+
+  revalidatePath(`/platform/tenants/${tenantId}`)
+  revalidatePath('/platform/tenants')
+  revalidatePath('/platform')
+  return { ok: true, endsAt: endsAfter.toISOString() }
+}
+
+// ---------------------------------------------------------------------------
+// 启用 / 停用租户账号(停用后该租户全员无法登录)
+// ---------------------------------------------------------------------------
+export async function setTenantStatus(
+  tenantId: string,
+  status: 'active' | 'suspended',
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requirePlatformAdmin()
+  if (status !== 'active' && status !== 'suspended') {
+    return { ok: false, error: '非法状态' }
+  }
+  const r = await pool.query(
+    `UPDATE "user" SET "accountStatus"=$2 WHERE id=$1 AND role='group' RETURNING id`,
+    [tenantId, status],
+  )
+  if (!r.rows[0]) return { ok: false, error: '租户不存在' }
+
+  revalidatePath(`/platform/tenants/${tenantId}`)
+  revalidatePath('/platform/tenants')
+  revalidatePath('/platform')
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// 到期清扫:把已过期(超过宽限期)的租户标记为 expired。可在中台手动触发兜底。
+// ---------------------------------------------------------------------------
+export async function sweepExpiredTenants(): Promise<{ ok: true; affected: number }> {
+  await requirePlatformAdmin()
+  const r = await pool.query(
+    `UPDATE "user"
+        SET "accountStatus"='expired'
+      WHERE role='group' AND "ownerId"=id
+        AND "accountStatus"='active'
+        AND "subscriptionEndsAt" IS NOT NULL
+        AND "subscriptionEndsAt" < now()`,
+  )
+  revalidatePath('/platform/tenants')
+  revalidatePath('/platform')
+  return { ok: true, affected: r.rowCount ?? 0 }
 }
