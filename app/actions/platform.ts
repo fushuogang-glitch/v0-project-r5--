@@ -295,7 +295,7 @@ async function scanAllTenants(): Promise<{ tenants: number; alerts: number }> {
     ])
   }
 
-  // 批量 upsert 健康快照(分批,每批 200 行)
+  // 批量 upsert 健康快照(分批,每��� 200 行)
   await batchUpsertHealth(healthRows)
 
   // 告警 upsert + 自动消解
@@ -812,7 +812,7 @@ export async function createTenant(
   // 邮箱直接注册;手机号/用户名走合成邮箱 + 用户名
   const identity = resolveSignupIdentity(account)
   try {
-    // 不转发 headers,避免 autoSignIn 顶替超管自己的会话
+    // 不转发 headers,避免 autoSignIn 顶替���管自己的会话
     await auth.api.signUpEmail({
       body: {
         name: brandName,
@@ -880,7 +880,7 @@ export async function createTenant(
 // ---------------------------------------------------------------------------
 // 租户详情:基本信息 + 账号安全 + 订阅 + 运营数据(门店数/最近活跃)
 // ---------------------------------------------------------------------------
-export type TenantDetail = {
+export type TenantProfile = {
   id: string
   brandName: string
   loginAccount: string // 展示用登录账号(用户名优先,合成邮箱隐藏)
@@ -903,7 +903,7 @@ export type TenantDetail = {
   memberCount: number
 }
 
-export async function getTenantDetail(tenantId: string): Promise<TenantDetail | null> {
+export async function getTenantDetail(tenantId: string): Promise<TenantProfile | null> {
   await requirePlatformAdmin()
   const r = await pool.query(
     `SELECT u.id, u.name, u.email, u.username, u."displayUsername",
@@ -1145,4 +1145,49 @@ export async function sweepExpiredTenants(): Promise<{ ok: true; affected: numbe
   revalidatePath('/platform/tenants')
   revalidatePath('/platform')
   return { ok: true, affected: r.rowCount ?? 0 }
+}
+
+// ---------------------------------------------------------------------------
+// 更新租户基本档案(品牌名 / 负责人 / 地区 / 联系方式)
+// ---------------------------------------------------------------------------
+export type UpdateTenantProfileInput = {
+  brandName?: string
+  bossName?: string | null
+  province?: string | null
+  city?: string | null
+  address?: string | null
+  contactPhone?: string | null
+}
+
+export async function updateTenantProfile(
+  tenantId: string,
+  input: UpdateTenantProfileInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requirePlatformAdmin()
+  const brandName = input.brandName?.trim()
+  if (input.brandName !== undefined && !brandName) {
+    return { ok: false, error: '品牌名称不能为空' }
+  }
+  const r = await pool.query(
+    `UPDATE "user"
+        SET name=COALESCE($2,name),
+            "bossName"=$3, province=$4, city=$5, address=$6, "contactPhone"=$7,
+            "updatedAt"=now()
+      WHERE id=$1 AND role='group' AND "ownerId"=id
+      RETURNING id`,
+    [
+      tenantId,
+      brandName || null,
+      input.bossName?.trim() || null,
+      normalizeProvince(input.province) || null,
+      input.city?.trim() || null,
+      input.address?.trim() || null,
+      input.contactPhone?.trim() || null,
+    ],
+  )
+  if (!r.rows[0]) return { ok: false, error: '租户不存在' }
+
+  revalidatePath(`/platform/tenants/${tenantId}`)
+  revalidatePath('/platform/tenants')
+  return { ok: true }
 }
